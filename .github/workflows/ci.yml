@@ -4,9 +4,11 @@ on:
   pull_request:
     branches:
       - main
+      - dev
   push:
     branches:
       - main
+      - dev
 
 jobs:
   verify:
@@ -25,3 +27,18 @@ jobs:
 
       - name: Compile Python files
         run: python3 -m compileall tests
+
+  sonar:
+    runs-on: ubuntu-latest
+    needs: [verify]
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@299e4b793aaa83bf2aba7c9c14bedbb485688ec4 # v7
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

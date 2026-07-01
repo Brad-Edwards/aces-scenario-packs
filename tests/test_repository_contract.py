@@ -19,6 +19,8 @@ REQUIRED_PATHS = [
     "docs/migration-plan.md",
     "docs/authoring-boundary.md",
     "docs/tracking-issues.md",
+    "docs/versioning.md",
+    "docs/branch-protection.md",
     "contracts/README.md",
     "schemas/README.md",
     "templates/README.md",

@@ -1,0 +1,33 @@
+schema_version: 1
+project: aces-scenario-packs
+github_repo: Brad-Edwards/aces-scenario-packs
+short_code: ASP
+workflow:
+  test_command: python3 -m unittest discover -s tests
+  completion_command: python3 -m unittest discover -s tests
+  lint_command: python3 -m compileall tests
+  format_command: python3 -m compileall tests
+docs:
+  adr_dir: docs/decisions/adrs/
+  workflow_reference: docs/repository-charter.md
+example_paths:
+  source: tools/
+  test: tests/
+requirements:
+  uid_examples:
+    - ASP-0001
+    - ASP-0002
+rules:
+  plan_rules: .gc/plan-rules.md
+architecture:
+  vocabulary:
+    patterns:
+      - name: Companion contract repository
+        applies_to: scenario-pack specification and adoption support
+        example_path: docs/repository-charter.md
+    boundary_contract:
+      description: ACES core owns SDL semantics; this repository owns scenario-pack structure, validation, templates, and adoption guidance.
+    binding_adrs: []
+    anti_recommendations:
+      - Do not move capture workflow assets before the ownership review is resolved.
+      - Do not encode downstream catalog vocabulary into canonical pack terminology.

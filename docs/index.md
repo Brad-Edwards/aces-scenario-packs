@@ -1,5 +1,6 @@
 # Documentation Index
 
+- [ACES scenario-pack contract](../contracts/scenario-pack-contract.md)
 - [Repository charter](repository-charter.md)
 - [Migration planning](migration-plan.md)
 - [Authoring and capture boundary](authoring-boundary.md)

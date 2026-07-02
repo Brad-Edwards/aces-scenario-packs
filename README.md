@@ -11,10 +11,11 @@ semantics.
 
 ## Current Status
 
-This repository has been bootstrapped for planning and migration tracking. It
-does not yet contain the final scenario-pack contract, migrated schemas, migrated
-tools, or example packs. Those work items are tracked as GitHub issues in this
-repository and in the ACES core repository.
+This repository has been bootstrapped for planning and migration tracking. The
+public [scenario-pack contract](contracts/scenario-pack-contract.md) has landed
+as normative documentation; migrated schemas, tools, and example packs are not
+here yet. Those work items are tracked as GitHub issues in this repository and
+in the ACES core repository.
 
 ## Repository Boundaries
 
@@ -31,6 +32,7 @@ repository and in the ACES core repository.
 
 ## Initial Surfaces
 
+- [Scenario-pack contract](contracts/scenario-pack-contract.md)
 - [Repository charter](docs/repository-charter.md)
 - [Migration planning](docs/migration-plan.md)
 - [Authoring and capture boundary](docs/authoring-boundary.md)

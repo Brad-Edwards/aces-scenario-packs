@@ -7,3 +7,11 @@
 [run]
 source = tools/aces_pack_tools
 relative_files = True
+
+[report]
+# Keep coverage.py's default `pragma: no cover` and also exclude the
+# ``if __name__ == "__main__":`` entry-point guard, which only runs under
+# ``python -m aces_pack_tools`` (a subprocess) and cannot be covered in process.
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:

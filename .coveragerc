@@ -1,0 +1,9 @@
+# Coverage configuration for the scenario-pack tooling.
+#
+# Measures the aces_pack_tools package and emits relative file paths so
+# SonarCloud can map coverage.xml onto sonar.sources (see sonar-project.properties
+# and .github/workflows/ci.yml). Default exclusions (e.g. `# pragma: no cover`)
+# apply.
+[run]
+source = tools/aces_pack_tools
+relative_files = True

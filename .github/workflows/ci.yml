@@ -38,6 +38,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate coverage report
+        run: |
+          python3 -m pip install --upgrade coverage
+          coverage run -m unittest discover -s tests
+          coverage xml
+
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@299e4b793aaa83bf2aba7c9c14bedbb485688ec4 # v7
         env:

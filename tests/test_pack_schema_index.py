@@ -184,8 +184,8 @@ class SchemaIndexTests(unittest.TestCase):
                 for field in ("family", "id", "path", "version", "status",
                               "source", "ownership", "compatibility_impact", "fixtures"):
                     value = entry.get(field)
-                    self.assertTrue(
-                        value not in (None, "", []),
+                    self.assertNotIn(
+                        value, (None, "", []),
                         f"index entry {entry.get('family')!r} missing {field!r}",
                     )
 

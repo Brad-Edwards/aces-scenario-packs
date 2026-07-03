@@ -13,14 +13,16 @@ from typing import Optional
 
 
 @dataclass(frozen=True)
-class Finding:
+class Finding(object):
+    """A single sanitized check result: check name, pack-relative path, and reason."""
+
     check: str
     path: str
     message: str
     family: Optional[str] = None
     severity: str = "error"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, object]:
         return {key: value for key, value in asdict(self).items() if value is not None}
 
     def format_text(self) -> str:

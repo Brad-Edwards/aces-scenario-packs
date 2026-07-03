@@ -19,11 +19,11 @@ from .schema import within_root
 _SECRET_PATTERNS = [
     ("private-key", re.compile(r"-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----")),
     ("cloud-access-key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
-    ("bearer-token", re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]{20,}")),
+    ("bearer-token", re.compile(r"(?i)\bbearer\s+[A-Z0-9._\-]{20,}")),
     (
         "assigned-secret",
         re.compile(
-            r"(?i)\b(?:api[_-]?key|secret|token|password|passwd)\b\s*[:=]\s*['\"]?[A-Za-z0-9/+_\-]{12,}"
+            r"(?i)\b(?:api[_-]?key|secret|token|password|passwd)\b\s*[:=]\s*['\"]?[A-Z0-9/+_\-]{12,}"
         ),
     ),
 ]
@@ -35,8 +35,9 @@ _SKIP_SUFFIXES = {
 }
 
 
-def scan_text(text, path, denylist_terms=()) -> list:
-    findings: list = []
+def scan_text(text: str, path: str, denylist_terms: tuple[str, ...] = ()) -> list[Finding]:
+    """Scan one text blob for secret-shaped material and denylisted vocabulary."""
+    findings: list[Finding] = []
     for name, pattern in _SECRET_PATTERNS:
         if pattern.search(text):
             findings.append(Finding("leak", path, f"possible {name} material detected", family="secret"))
@@ -49,9 +50,14 @@ def scan_text(text, path, denylist_terms=()) -> list:
     return findings
 
 
-def scan_pack(pack_root, denylist_terms=(), skip_dirs=(".git",)) -> list:
+def scan_pack(
+    pack_root: str | Path,
+    denylist_terms: tuple[str, ...] = (),
+    skip_dirs: tuple[str, ...] = (".git",),
+) -> list[Finding]:
+    """Recursively scan a pack directory, skipping binaries and symlink escapes."""
     root = Path(pack_root).resolve()
-    findings: list = []
+    findings: list[Finding] = []
     for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue

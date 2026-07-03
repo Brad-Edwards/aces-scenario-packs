@@ -13,21 +13,24 @@ import sys
 from pathlib import Path
 
 from .leak import scan_pack, scan_text
+from .model import Finding
 from .release import check_release
-from .schema import SchemaIndex
+from .schema import SchemaIndex, _validated_file
 from .validate import validate_pack, validate_record
 
 _DEFAULT_INDEX = "schemas/index.json"
 
 
-def _read_denylist(path) -> tuple:
+def _read_denylist(path: str | None) -> tuple[str, ...]:
+    """Read a denylist file (one term per line, ``#`` comments) into a tuple of terms."""
     if not path:
         return ()
-    lines = Path(path).read_text(encoding="utf-8").splitlines()
+    lines = _validated_file(path).read_text(encoding="utf-8").splitlines()
     return tuple(line.strip() for line in lines if line.strip() and not line.startswith("#"))
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the argparse parser for the validate/leak/release subcommands."""
     parser = argparse.ArgumentParser(
         prog="aces_pack_tools",
         description="Static, offline validation and release checks for ACES scenario packs.",
@@ -53,29 +56,51 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _dispatch(args) -> list:
-    if args.command == "validate":
-        index = SchemaIndex(args.schema_index)
-        target = Path(args.target)
-        if args.family:
-            return validate_record(target, args.family, index)
-        if target.is_dir():
-            return validate_pack(target, index)
-        raise ValueError(
-            "validate: a file target requires --family; a directory target validates the whole pack"
-        )
-    if args.command == "leak":
-        target = Path(args.target)
-        denylist = _read_denylist(args.denylist)
-        if target.is_dir():
-            return scan_pack(target, denylist_terms=denylist)
-        return scan_text(target.read_text(encoding="utf-8"), target.name, denylist)
-    if args.command == "release":
-        return check_release(Path(args.record), SchemaIndex(args.schema_index))
-    raise ValueError(f"unknown command: {args.command}")
+def _run_validate(args: argparse.Namespace) -> list[Finding]:
+    """Handle the ``validate`` subcommand: a single record (--family) or a whole pack."""
+    index = SchemaIndex(args.schema_index)
+    target = Path(args.target)
+    if args.family:
+        return validate_record(target, args.family, index)
+    if target.is_dir():
+        return validate_pack(target, index)
+    raise ValueError(
+        "validate: a file target requires --family; a directory target validates the whole pack"
+    )
 
 
-def _emit(findings, fmt) -> None:
+def _run_leak(args: argparse.Namespace) -> list[Finding]:
+    """Handle the ``leak`` subcommand: scan a directory or a single validated file."""
+    target = Path(args.target)
+    denylist = _read_denylist(args.denylist)
+    if target.is_dir():
+        return scan_pack(target, denylist_terms=denylist)
+    validated = _validated_file(args.target)
+    return scan_text(validated.read_text(encoding="utf-8"), target.name, denylist)
+
+
+def _run_release(args: argparse.Namespace) -> list[Finding]:
+    """Handle the ``release`` subcommand: validate a release record."""
+    return check_release(Path(args.record), SchemaIndex(args.schema_index))
+
+
+_COMMANDS = {
+    "validate": _run_validate,
+    "leak": _run_leak,
+    "release": _run_release,
+}
+
+
+def _dispatch(args: argparse.Namespace) -> list[Finding]:
+    """Route parsed CLI ``args`` to the handler for the selected subcommand."""
+    handler = _COMMANDS.get(args.command)
+    if handler is None:
+        raise ValueError(f"unknown command: {args.command}")
+    return handler(args)
+
+
+def _emit(findings: list[Finding], fmt: str) -> None:
+    """Print findings (text or JSON) and a summary count line to stderr."""
     errors = sum(1 for f in findings if f.severity == "error")
     warnings = sum(1 for f in findings if f.severity == "warning")
     if fmt == "json":
@@ -90,7 +115,8 @@ def _emit(findings, fmt) -> None:
         print(f"{errors} error(s), {warnings} warning(s)", file=sys.stderr)
 
 
-def main(argv=None) -> int:
+def main(argv: list[str] | None = None) -> int:
+    """Parse ``argv``, run the selected check, print findings, and return an exit code."""
     args = build_parser().parse_args(argv)
     try:
         findings = _dispatch(args)

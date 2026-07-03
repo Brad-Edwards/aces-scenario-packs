@@ -16,7 +16,10 @@ from .model import Finding
 from .schema import SchemaIndex, conformance_errors, load_json
 
 
-def check_release(record_path, index: SchemaIndex, rel=None) -> list:
+def check_release(
+    record_path: str | Path, index: SchemaIndex, rel: str | None = None
+) -> list[Finding]:
+    """Validate a release record and cross-check its schemaVersions against the index."""
     schema = index.schema_for("release")
     record = load_json(record_path)
     where = rel or Path(record_path).name

@@ -37,8 +37,10 @@ _PRIVATE_HOST = re.compile(
 REQUIRED_FAMILIES = ("pack-metadata", "compatibility", "provenance", "lifecycle")
 
 
-def _validate_loaded(record, family, index: SchemaIndex, rel: str) -> list:
-    schema = index.schema_for(family)  # raises ValueError on unknown family
+def _validate_loaded(record: object, family: str, index: SchemaIndex, rel: str) -> list[Finding]:
+    """Validate an already-loaded ``record`` against schema ``family`` and profile gates."""
+    # ``schema_for`` raises ValueError on an unknown family.
+    schema = index.schema_for(family)
     findings = [
         Finding("schema", rel, err, family=family)
         for err in conformance_errors(record, schema)
@@ -48,14 +50,19 @@ def _validate_loaded(record, family, index: SchemaIndex, rel: str) -> list:
     return findings
 
 
-def validate_record(record_path, family, index: SchemaIndex, rel=None) -> list:
-    index.entry(family)  # fail fast on unknown family before reading the file
+def validate_record(
+    record_path: str | Path, family: str, index: SchemaIndex, rel: str | None = None
+) -> list[Finding]:
+    """Validate a single JSON record file against its schema ``family``."""
+    # Fail fast on an unknown family before reading the file.
+    index.entry(family)
     record = load_json(record_path)
     return _validate_loaded(record, family, index, rel or Path(record_path).name)
 
 
-def check_profile(record, path) -> list:
-    findings: list = []
+def check_profile(record: object, path: str) -> list[Finding]:
+    """Flag runtime-profile requirements that name a private host, endpoint, or IP."""
+    findings: list[Finding] = []
     profile = record.get("profile") if isinstance(record, dict) else None
     if not isinstance(profile, dict):
         return findings
@@ -72,8 +79,9 @@ def check_profile(record, path) -> list:
     return findings
 
 
-def _check_artifact_boundary(record, root: Path, rel: str) -> list:
-    findings: list = []
+def _check_artifact_boundary(record: object, root: Path, rel: str) -> list[Finding]:
+    """Flag artifacts whose path escapes the pack root or is declared but missing."""
+    findings: list[Finding] = []
     if not isinstance(record, dict):
         return findings
     for artifact in record.get("artifacts", []) or []:
@@ -101,7 +109,7 @@ def _check_artifact_boundary(record, root: Path, rel: str) -> list:
     return findings
 
 
-def validate_pack(pack_root, index: SchemaIndex) -> list:
+def validate_pack(pack_root: str | Path, index: SchemaIndex) -> list[Finding]:
     """Validate a pack directory against the published schemas and minimum shape.
 
     Records are discovered by the tool's own convention: a top-level
@@ -113,9 +121,9 @@ def validate_pack(pack_root, index: SchemaIndex) -> list:
     untrusted, so a symlink must not pull a record from outside the boundary.
     """
     root = Path(pack_root).resolve()
-    findings: list = []
-    pack_ids: dict = {}
-    present: set = set()
+    findings: list[Finding] = []
+    pack_ids: dict[str, list[str]] = {}
+    present: set[str] = set()
     for family in sorted(index.families()):
         record_path = root / f"{family}.json"
         if not record_path.is_file():

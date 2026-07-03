@@ -4,6 +4,8 @@
 - [Repository charter](repository-charter.md)
 - [Migration planning](migration-plan.md)
 - [Authoring and capture boundary](authoring-boundary.md)
+- [Schema design guardrails](schema-design-guardrails.md)
+- [Scenario-pack schemas](../schemas/README.md)
 - [Tracking issues](tracking-issues.md)
 - [Versioning and release policy](versioning.md)
 - [Branch protection expectations](branch-protection.md)

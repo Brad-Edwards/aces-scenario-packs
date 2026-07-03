@@ -1,0 +1,7 @@
+{
+  "packId": "aces-example-pack",
+  "state": "Draft",
+  "history": [
+    {"state": "Draft", "at": "0.1.0", "note": "Initial authoring."}
+  ]
+}

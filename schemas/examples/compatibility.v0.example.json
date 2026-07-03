@@ -1,0 +1,10 @@
+{
+  "packId": "aces-example-pack",
+  "packVersion": "0.1.0",
+  "sdlContractVersion": "0",
+  "boundary": {
+    "owns": ["pack structure", "optional-layer declarations", "lifecycle state"],
+    "dependsOn": ["ACES SDL scenario semantics"]
+  },
+  "breakingChangePolicy": "Pre-1.0: any MINOR bump may break consumers until the contract stabilises."
+}

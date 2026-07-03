@@ -1,0 +1,7 @@
+{
+  "packId": "aces-example-pack",
+  "checks": [
+    {"name": "manifest declares minimum shape", "kind": "structural", "result": "pass", "evidence": "tests/test_template_pack_scaffold.py"},
+    {"name": "pack metadata loadable against schema", "kind": "schema", "result": "pass", "evidence": "tests/test_pack_schema_index.py"}
+  ]
+}

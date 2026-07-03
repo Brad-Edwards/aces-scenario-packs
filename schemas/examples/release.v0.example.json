@@ -1,0 +1,14 @@
+{
+  "packId": "aces-example-pack",
+  "releaseVersion": "0.1.0",
+  "schemaVersions": [
+    {"family": "pack-metadata", "version": "0.1.0"},
+    {"family": "compatibility", "version": "0.1.0"},
+    {"family": "lifecycle", "version": "0.1.0"}
+  ],
+  "compatibilityImpact": {
+    "level": "additive",
+    "notes": "First pre-1.0 schema set; no prior published version, so no break."
+  },
+  "migrationNotes": "None; initial pre-1.0 publication."
+}

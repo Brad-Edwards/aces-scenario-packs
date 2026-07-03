@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aces-scenario-pack:schema:artifact-boundary:v0",
+  "version": "0.1.0",
+  "title": "ACES Scenario Pack — Artifact Boundary (v0)",
+  "description": "Describes which artifacts in a pack are authored, generated, included, excluded, or consumer-supplied. It must not move capture or inventory workflow assets before the ownership issue resolves.",
+  "type": "object",
+  "required": ["packId", "artifacts"],
+  "properties": {
+    "packId": {"type": "string", "description": "Pack this artifact-boundary record applies to."},
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Artifacts the pack declares, each with an explicit disposition.",
+      "items": {
+        "type": "object",
+        "required": ["path", "disposition"],
+        "properties": {
+          "path": {"type": "string", "description": "Pack-relative path or glob for the artifact."},
+          "disposition": {
+            "type": "string",
+            "enum": ["authored", "generated", "included", "excluded", "consumer-supplied"],
+            "description": "How the artifact enters the pack boundary."
+          },
+          "note": {"type": "string", "description": "Short rationale for the disposition."}
+        }
+      }
+    }
+  }
+}

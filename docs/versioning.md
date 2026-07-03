@@ -38,9 +38,9 @@ published surface may change without a compatibility guarantee.
 
 ## Change tracking
 
-Until release automation exists, notable changes are tracked through their GitHub
-issues and pull requests. The static release-record check in
-[`../tools/`](../tools/README.md) validates a pack's `release` record and
-cross-checks its declared schema versions against the schema index; when release
-automation lands, this page will be updated to point at the changelog mechanism
-it establishes.
+Notable changes are recorded as fragments under
+[`../changelog.d/`](../changelog.d/README.md) using the Keep a Changelog
+categories, to be collated into a release changelog when release automation
+lands. The static release-record check in [`../tools/`](../tools/README.md)
+validates a pack's `release` record and cross-checks its declared schema versions
+against the schema index.

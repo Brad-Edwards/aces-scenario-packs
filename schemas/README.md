@@ -48,6 +48,7 @@ must update this index and ship a loadable validation fixture, per
 Every schema ships at least one loadable fixture under [`examples/`](examples/).
 `tests/test_pack_schema_index.py` proves each schema is loadable and well-formed,
 that the index and on-disk schema set agree, and that each fixture conforms to its
-schema. Validation is expressed through the repository's stdlib `unittest` suite;
-dedicated validation and release tooling is deferred to
-Brad-Edwards/aces-scenario-packs#5.
+schema, using the shared conformance checker in `tools/aces_pack_tools`. Reusable,
+offline pack validation and release-check tooling for external adopters lives in
+[`../tools/`](../tools/README.md) (Brad-Edwards/aces-scenario-packs#5); full
+release automation remains deferred.

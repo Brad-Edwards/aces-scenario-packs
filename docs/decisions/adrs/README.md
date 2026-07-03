@@ -9,3 +9,4 @@ published repository policy.
 ## Records
 
 - [ADR 0001: Scenario-Pack Contract Boundary](0001-scenario-pack-contract-boundary.md)
+- [ADR 0002: Scenario-Pack Validation and Release Tooling](0002-scenario-pack-validation-tooling.md)

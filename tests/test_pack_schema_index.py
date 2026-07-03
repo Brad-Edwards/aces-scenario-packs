@@ -1,8 +1,8 @@
 """Loadability and integrity gates for the scenario-pack schemas (ASP-0004).
 
 These tests keep the published schema set honest without pulling a third-party
-JSON Schema engine (the repo is stdlib-only and validation tooling is deferred to
-Brad-Edwards/aces-scenario-packs#5). They assert, using ordinary assertions:
+JSON Schema engine (the repo is stdlib-only). They assert, using ordinary
+assertions:
 
 - ``schemas/index.json`` exists, parses, and is the source of truth for every
   published schema (no orphan schema files on disk, no dangling index entries).
@@ -10,23 +10,38 @@ Brad-Edwards/aces-scenario-packs#5). They assert, using ordinary assertions:
 - every schema file is loadable JSON and a well-formed JSON Schema document whose
   ``$id`` / ``version`` match its index entry.
 - every schema ships at least one fixture that is loadable and *conforms* to the
-  schema. Conformance is checked by a small recursive checker covering exactly
-  the JSON Schema keywords these schemas use; a coverage guard fails if any
-  schema introduces a keyword the checker does not handle, so conformance
-  coverage can never silently go vacuous.
+  schema. Conformance is checked by the shared checker in
+  ``aces_pack_tools.schema`` (ASP-0005 promoted it out of this test into the
+  reusable tooling package); a coverage guard fails if any schema introduces a
+  keyword the checker does not handle, so conformance coverage can never silently
+  go vacuous.
 - the nine schema families named by ASP-0004 are all present.
+
+``ConformanceCheckerTests`` pins the shared checker's teeth so a checker
+regressed to ``return []`` fails here rather than passing silently.
 """
 
-from pathlib import Path
-import json
+import sys
 import unittest
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_DIR = ROOT / "schemas"
 INDEX = SCHEMA_DIR / "index.json"
 
-DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema"
+# The conformance checker now lives in the shipped tooling package; import it
+# rather than forking a second copy (ASP-0005 tooling guardrails).
+TOOLS = ROOT / "tools"
+if str(TOOLS) not in sys.path:
+    sys.path.insert(0, str(TOOLS))
+
+from aces_pack_tools.schema import (  # noqa: E402
+    DRAFT_2020_12,
+    SUPPORTED_KEYWORDS,
+    collect_keywords as _collect_keywords,
+    conformance_errors as _conformance_errors,
+    load_json as _load_json,
+)
 
 # The families ASP-0004 requires this repository to define or host.
 REQUIRED_FAMILIES = {
@@ -40,120 +55,6 @@ REQUIRED_FAMILIES = {
     "validation",
     "release",
 }
-
-# JSON Schema keywords the conformance checker below understands. Any keyword
-# used by a published schema but absent here is a coverage gap and fails
-# ``test_checker_covers_every_keyword_used`` rather than passing silently.
-SUPPORTED_KEYWORDS = {
-    "$schema",
-    "$id",
-    "$comment",
-    "title",
-    "description",
-    "version",
-    "type",
-    "enum",
-    "const",
-    "required",
-    "properties",
-    "items",
-    "minItems",
-    "additionalProperties",
-    "examples",
-}
-
-_JSON_TYPES = {
-    "object": dict,
-    "array": list,
-    "string": str,
-    "boolean": bool,
-    "number": (int, float),
-    "integer": int,
-    "null": type(None),
-}
-
-
-def _load_json(path: Path):
-    with path.open(encoding="utf-8") as handle:
-        return json.load(handle)
-
-
-def _type_matches(value, declared) -> bool:
-    types = declared if isinstance(declared, list) else [declared]
-    for name in types:
-        py = _JSON_TYPES.get(name)
-        if py is None:
-            return True  # unknown type name; leave to the keyword-coverage guard
-        # bool is a subclass of int in Python; keep the JSON distinction.
-        if name in ("number", "integer") and isinstance(value, bool):
-            continue
-        if isinstance(value, py):
-            return True
-    return False
-
-
-def _conformance_errors(instance, schema, where="<root>"):
-    """Return a list of human-readable conformance errors for ``instance``.
-
-    Recursive over the keyword subset in ``SUPPORTED_KEYWORDS``. This is not a
-    general JSON Schema validator; it is exactly enough to prove the shipped
-    fixtures satisfy the shipped schemas, guarded by the keyword-coverage test.
-    """
-    errors: list[str] = []
-
-    if "const" in schema and instance != schema["const"]:
-        errors.append(f"{where}: expected const {schema['const']!r}, got {instance!r}")
-
-    if "enum" in schema and instance not in schema["enum"]:
-        errors.append(f"{where}: {instance!r} not in enum {schema['enum']!r}")
-
-    declared = schema.get("type")
-    if declared is not None and not _type_matches(instance, declared):
-        errors.append(f"{where}: {instance!r} is not of type {declared!r}")
-        return errors  # further keyword checks assume the declared shape
-
-    if isinstance(instance, dict):
-        for key in schema.get("required", []):
-            if key not in instance:
-                errors.append(f"{where}: missing required property {key!r}")
-        props = schema.get("properties", {})
-        for key, subschema in props.items():
-            if key in instance:
-                errors.extend(
-                    _conformance_errors(instance[key], subschema, f"{where}.{key}")
-                )
-        if schema.get("additionalProperties") is False:
-            extra = sorted(set(instance) - set(props))
-            if extra:
-                errors.append(f"{where}: unexpected properties {extra}")
-
-    if isinstance(instance, list):
-        item_schema = schema.get("items")
-        if "minItems" in schema and len(instance) < schema["minItems"]:
-            errors.append(
-                f"{where}: has {len(instance)} items, fewer than minItems "
-                f"{schema['minItems']}"
-            )
-        if isinstance(item_schema, dict):
-            for idx, item in enumerate(instance):
-                errors.extend(
-                    _conformance_errors(item, item_schema, f"{where}[{idx}]")
-                )
-
-    return errors
-
-
-def _collect_keywords(schema, seen: set) -> None:
-    if isinstance(schema, dict):
-        for key, value in schema.items():
-            seen.add(key)
-            if key == "properties" and isinstance(value, dict):
-                for sub in value.values():
-                    _collect_keywords(sub, seen)
-            elif key == "items":
-                _collect_keywords(value, seen)
-            elif isinstance(value, dict):
-                _collect_keywords(value, seen)
 
 
 class SchemaIndexTests(unittest.TestCase):
@@ -205,7 +106,7 @@ class SchemaIndexTests(unittest.TestCase):
                 self.assertIn("type", schema, f"{entry['family']}: missing top-level type")
 
     def test_checker_covers_every_keyword_used(self) -> None:
-        used: set[str] = set()
+        used: set = set()
         for entry in self.entries:
             _collect_keywords(_load_json(ROOT / entry["path"]), used)
         unsupported = sorted(used - SUPPORTED_KEYWORDS)
@@ -228,13 +129,12 @@ class SchemaIndexTests(unittest.TestCase):
 
 
 class ConformanceCheckerTests(unittest.TestCase):
-    """Pin the conformance checker's teeth against synthetic inputs.
+    """Pin the shared conformance checker's teeth against synthetic inputs.
 
     ``SchemaIndexTests`` only ever asserts that conforming fixtures yield *no*
     errors, so a checker regressed to ``return []`` would pass it silently.
     These tests assert the checker produces errors for genuinely invalid input
-    for every keyword it claims to support, so a broken or no-op checker fails
-    here. Each case names the keyword and the path it should flag.
+    for every keyword it claims to support.
     """
 
     def test_valid_instance_yields_no_errors(self) -> None:
@@ -304,7 +204,7 @@ class ConformanceCheckerTests(unittest.TestCase):
 
     def test_keyword_collector_finds_nested_keywords(self) -> None:
         # The coverage guard relies on this walking into properties and items.
-        seen: set[str] = set()
+        seen: set = set()
         _collect_keywords(
             {"type": "object", "properties": {"a": {"type": "array",
              "items": {"minItems": 0}}}},

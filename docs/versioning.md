@@ -1,9 +1,10 @@
 # Versioning and Release Policy
 
 This page records how the ACES scenario-pack companion repository versions and
-releases its public artifacts. It is policy only. Release automation and
-validation tooling are tracked separately (Brad-Edwards/aces-scenario-packs#5)
-and are not implemented yet.
+releases its public artifacts. It is policy only. Static pack validation and
+release-record checks have landed in [`../tools/`](../tools/README.md)
+(Brad-Edwards/aces-scenario-packs#5); release *automation* that cuts tags or
+publishes releases is tracked separately and is not implemented yet.
 
 ## Current status
 
@@ -37,7 +38,9 @@ published surface may change without a compatibility guarantee.
 
 ## Change tracking
 
-Until release tooling exists, notable changes are tracked through their GitHub
-issues and pull requests. When the release tooling in
-Brad-Edwards/aces-scenario-packs#5 lands, this page will be updated to point at
-the changelog mechanism it establishes.
+Until release automation exists, notable changes are tracked through their GitHub
+issues and pull requests. The static release-record check in
+[`../tools/`](../tools/README.md) validates a pack's `release` record and
+cross-checks its declared schema versions against the schema index; when release
+automation lands, this page will be updated to point at the changelog mechanism
+it establishes.

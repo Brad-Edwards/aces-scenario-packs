@@ -1,0 +1,117 @@
+{
+  "index_version": "0.1.0",
+  "contract": "contracts/scenario-pack-contract.md",
+  "guardrails": "docs/schema-design-guardrails.md",
+  "versioning_policy": "docs/versioning.md",
+  "description": "Source of truth for published ACES scenario-pack schemas: ids, versions, status, source/ownership notes, compatibility impact, and fixture links. All schemas are JSON Schema Draft 2020-12 and implement contracts/scenario-pack-contract.md; they do not redefine ACES SDL semantics.",
+  "schemas": [
+    {
+      "family": "pack-metadata",
+      "id": "urn:aces-scenario-pack:schema:pack-metadata:v0",
+      "path": "schemas/pack-metadata.v0.schema.json",
+      "version": "0.1.0",
+      "status": "draft",
+      "title": "ACES Scenario Pack — Pack Metadata (v0)",
+      "source": "Authored in this repository from contracts/scenario-pack-contract.md 'Minimum Pack Shape'. No upstream schema ported.",
+      "ownership": "aces-scenario-packs owns pack identity/metadata. ACES core owns SDL semantics; this schema references but never redefines SDL.",
+      "compatibility_impact": "New pre-1.0 schema; additive. No prior published version. Future changes follow docs/versioning.md.",
+      "fixtures": ["schemas/examples/pack-metadata.v0.example.json"]
+    },
+    {
+      "family": "compatibility",
+      "id": "urn:aces-scenario-pack:schema:compatibility:v0",
+      "path": "schemas/compatibility.v0.schema.json",
+      "version": "0.1.0",
+      "status": "draft",
+      "title": "ACES Scenario Pack — Compatibility (v0)",
+      "source": "Authored in this repository from contracts/scenario-pack-contract.md 'Compatibility Boundaries'. No upstream schema ported.",
+      "ownership": "aces-scenario-packs owns the pack's declared ACES/pack-version compatibility. Downstream deployment matrices are explicitly out of scope.",
+      "compatibility_impact": "New pre-1.0 schema; additive. No prior published version. Future changes follow docs/versioning.md.",
+      "fixtures": ["schemas/examples/compatibility.v0.example.json"]
+    },
+    {
+      "family": "provenance",
+      "id": "urn:aces-scenario-pack:schema:provenance:v0",
+      "path": "schemas/provenance.v0.schema.json",
+      "version": "0.1.0",
+      "status": "draft",
+      "title": "ACES Scenario Pack — Provenance (v0)",
+      "source": "Authored in this repository from contracts/scenario-pack-contract.md and docs/migration-plan.md. No upstream schema ported.",
+      "ownership": "aces-scenario-packs owns pack provenance/scrub/adoption records. Records references only; never copies private content or credentials.",
+      "compatibility_impact": "New pre-1.0 schema; additive. No prior published version. Future changes follow docs/versioning.md.",
+      "fixtures": ["schemas/examples/provenance.v0.example.json"]
+    },
+    {
+      "family": "artifact-boundary",
+      "id": "urn:aces-scenario-pack:schema:artifact-boundary:v0",
+      "path": "schemas/artifact-boundary.v0.schema.json",
+      "version": "0.1.0",
+      "status": "draft",
+      "title": "ACES Scenario Pack — Artifact Boundary (v0)",
+      "source": "Authored in this repository from docs/authoring-boundary.md and docs/decisions/adrs/0001-scenario-pack-contract-boundary.md. No upstream schema ported.",
+      "ownership": "aces-scenario-packs owns pack artifact dispositions. Does not move capture/inventory workflow assets before the ownership issue (#14) resolves.",
+      "compatibility_impact": "New pre-1.0 schema; additive. No prior published version. Future changes follow docs/versioning.md.",
+      "fixtures": ["schemas/examples/artifact-boundary.v0.example.json"]
+    },
+    {
+      "family": "runtime-profile",
+      "id": "urn:aces-scenario-pack:schema:runtime-profile:v0",
+      "path": "schemas/runtime-profile.v0.schema.json",
+      "version": "0.1.0",
+      "status": "draft",
+      "title": "ACES Scenario Pack — Runtime Profile (v0)",
+      "source": "Authored in this repository from contracts/scenario-pack-contract.md terminology. No upstream schema ported.",
+      "ownership": "aces-scenario-packs owns portable, ACES-native runtime expectations. No private infrastructure or product-specific execution behavior.",
+      "compatibility_impact": "New pre-1.0 schema; additive. No prior published version. Future changes follow docs/versioning.md.",
+      "fixtures": ["schemas/examples/runtime-profile.v0.example.json"]
+    },
+    {
+      "family": "delivery-bundle",
+      "id": "urn:aces-scenario-pack:schema:delivery-bundle:v0",
+      "path": "schemas/delivery-bundle.v0.schema.json",
+      "version": "0.1.0",
+      "status": "draft",
+      "title": "ACES Scenario Pack — Delivery Bundle (v0)",
+      "source": "Authored in this repository from the contract's 'Delivery and Audience Bundle' optional layer. No upstream schema ported.",
+      "ownership": "aces-scenario-packs owns audience/packaging in portable terms. Does not define downstream portal, class-management, scoreboard, or release-channel behavior.",
+      "compatibility_impact": "New pre-1.0 schema; additive. No prior published version. Future changes follow docs/versioning.md.",
+      "fixtures": ["schemas/examples/delivery-bundle.v0.example.json"]
+    },
+    {
+      "family": "lifecycle",
+      "id": "urn:aces-scenario-pack:schema:lifecycle:v0",
+      "path": "schemas/lifecycle.v0.schema.json",
+      "version": "0.1.0",
+      "status": "draft",
+      "title": "ACES Scenario Pack — Lifecycle (v0)",
+      "source": "Authored in this repository from contracts/scenario-pack-contract.md 'Lifecycle States'. No upstream schema ported.",
+      "ownership": "aces-scenario-packs owns pack maturity state. States are the contract's ACES-native set; downstream catalog workflow statuses are excluded by construction.",
+      "compatibility_impact": "New pre-1.0 schema; additive. No prior published version. Future changes follow docs/versioning.md.",
+      "fixtures": ["schemas/examples/lifecycle.v0.example.json"]
+    },
+    {
+      "family": "validation",
+      "id": "urn:aces-scenario-pack:schema:validation:v0",
+      "path": "schemas/validation.v0.schema.json",
+      "version": "0.1.0",
+      "status": "draft",
+      "title": "ACES Scenario Pack — Validation (v0)",
+      "source": "Authored in this repository from docs/schema-design-guardrails.md 'Cross-Cutting Gates'. No upstream schema ported.",
+      "ownership": "aces-scenario-packs owns pack validation evidence. Validation tooling itself is deferred to #5; this schema records evidence only.",
+      "compatibility_impact": "New pre-1.0 schema; additive. No prior published version. Future changes follow docs/versioning.md.",
+      "fixtures": ["schemas/examples/validation.v0.example.json"]
+    },
+    {
+      "family": "release",
+      "id": "urn:aces-scenario-pack:schema:release:v0",
+      "path": "schemas/release.v0.schema.json",
+      "version": "0.1.0",
+      "status": "draft",
+      "title": "ACES Scenario Pack — Release Metadata (v0)",
+      "source": "Authored in this repository from docs/versioning.md. No upstream schema ported.",
+      "ownership": "aces-scenario-packs owns pack release metadata (release version, published schema versions, compatibility impact, migration notes). Release tooling is deferred to #5.",
+      "compatibility_impact": "New pre-1.0 schema; additive. No prior published version. Future changes follow docs/versioning.md.",
+      "fixtures": ["schemas/examples/release.v0.example.json"]
+    }
+  ]
+}

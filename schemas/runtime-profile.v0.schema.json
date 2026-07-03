@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aces-scenario-pack:schema:runtime-profile:v0",
+  "version": "0.1.0",
+  "title": "ACES Scenario Pack — Runtime Profile (v0)",
+  "description": "Portable, ACES-native runtime expectations needed to understand a pack. It must not require private infrastructure or product-specific execution behavior.",
+  "type": "object",
+  "required": ["packId", "profile"],
+  "properties": {
+    "packId": {"type": "string", "description": "Pack this runtime profile applies to."},
+    "profile": {
+      "type": "object",
+      "required": ["name", "portable"],
+      "properties": {
+        "name": {"type": "string", "description": "Portable runtime profile name."},
+        "description": {"type": "string", "description": "What the profile expects, in ACES-native terms."},
+        "portable": {"type": "boolean", "const": true, "description": "Must be true: the profile must be resolvable without private infrastructure. A non-portable runtime profile is not a valid scenario-pack runtime profile."},
+        "requires": {
+          "type": "array",
+          "description": "Portable capability names the profile requires; no private hosts, endpoints, or product runtimes.",
+          "items": {"type": "string"}
+        }
+      }
+    }
+  }
+}

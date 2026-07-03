@@ -1,0 +1,52 @@
+{
+  "pr_number": 18,
+  "quality_gate": "ERROR",
+  "issues": [
+    {
+      "key": "AZ8mHiu5JaAYUuOnsW-u",
+      "rule": "python:S5906",
+      "severity": "MINOR",
+      "component": "Brad-Edwards_aces-scenario-packs:tests/test_pack_schema_index.py",
+      "project": "Brad-Edwards_aces-scenario-packs",
+      "line": 187,
+      "hash": "8bdb02d2cdf642f9956e0d9b3b4c5247",
+      "textRange": {
+        "startLine": 187,
+        "endLine": 190,
+        "startOffset": 20,
+        "endOffset": 21
+      },
+      "flows": [],
+      "status": "OPEN",
+      "message": "Consider using \"assertNotIn\" instead.",
+      "effort": "1min",
+      "debt": "1min",
+      "assignee": "Brad-Edwards-O4BYC@github",
+      "author": "j.bradley.edwards@gmail.com",
+      "tags": [
+        "tests",
+        "unittest"
+      ],
+      "creationDate": "2026-07-03T02:40:01+0000",
+      "updateDate": "2026-07-03T03:55:11+0000",
+      "type": "CODE_SMELL",
+      "organization": "brad-edwards",
+      "pullRequest": "18",
+      "cleanCodeAttribute": "CLEAR",
+      "cleanCodeAttributeCategory": "INTENTIONAL",
+      "impacts": [
+        {
+          "softwareQuality": "MAINTAINABILITY",
+          "severity": "LOW"
+        }
+      ],
+      "issueStatus": "OPEN",
+      "projectName": "aces-scenario-packs",
+      "internalTags": [],
+      "lastChangeAnalysisUuid": "9af44ab8-1a38-4a37-b0d2-6cbaa2eec85c",
+      "lastChangeSource": "ANALYSIS"
+    }
+  ],
+  "hotspots": [],
+  "fetched_at": "2026-07-03T03:57:01.768Z"
+}

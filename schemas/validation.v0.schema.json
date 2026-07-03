@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aces-scenario-pack:schema:validation:v0",
+  "version": "0.1.0",
+  "title": "ACES Scenario Pack — Validation (v0)",
+  "description": "Validation evidence for a pack: the checks that were run and their results. Evidence is ACES-native and surfaced through ordinary checks; validation tooling itself is out of scope for this schema.",
+  "type": "object",
+  "required": ["packId", "checks"],
+  "properties": {
+    "packId": {"type": "string", "description": "Pack this validation record applies to."},
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Validation checks run against the pack and their outcomes.",
+      "items": {
+        "type": "object",
+        "required": ["name", "kind", "result"],
+        "properties": {
+          "name": {"type": "string", "description": "Name of the validation check."},
+          "kind": {
+            "type": "string",
+            "enum": ["structural", "schema", "fixture", "manual"],
+            "description": "Category of validation performed."
+          },
+          "result": {
+            "type": "string",
+            "enum": ["pass", "fail", "not-run"],
+            "description": "Outcome of the check."
+          },
+          "evidence": {"type": "string", "description": "Non-sensitive reference to the evidence for this check."}
+        }
+      }
+    }
+  }
+}

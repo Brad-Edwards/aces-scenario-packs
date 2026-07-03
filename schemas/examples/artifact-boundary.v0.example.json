@@ -1,0 +1,8 @@
+{
+  "packId": "aces-example-pack",
+  "artifacts": [
+    {"path": "pack-manifest.md", "disposition": "authored", "note": "Pack manifest."},
+    {"path": "scenarios/", "disposition": "authored", "note": "SDL scenario definitions carried by the pack."},
+    {"path": "provenance.md", "disposition": "authored", "note": "Provenance and compatibility declaration."}
+  ]
+}

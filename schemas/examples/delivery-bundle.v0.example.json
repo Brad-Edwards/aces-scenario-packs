@@ -1,0 +1,8 @@
+{
+  "packId": "aces-example-pack",
+  "audience": "pack authors evaluating the scaffold",
+  "packaging": {
+    "format": "directory",
+    "contents": ["pack-manifest.md", "scenarios/example-scenario.md", "provenance.md"]
+  }
+}

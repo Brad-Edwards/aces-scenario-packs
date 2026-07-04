@@ -161,18 +161,31 @@ def _artifact_root_findings(record: dict[str, object], root: Path, rel: str) -> 
     pack, so it must not share a subtree with any base (non-consumer-specific)
     artifact root.
     """
-    findings: list[Finding] = []
+    base_roots, overlay_parts_list, findings = _classify_artifact_roots(record, root, rel)
+    findings.extend(_overlay_overlap_findings(base_roots, overlay_parts_list, rel))
+    return findings
+
+
+def _classify_artifact_roots(
+    record: dict[str, object], root: Path, rel: str
+) -> tuple[list[tuple[str, ...]], list[tuple[str, ...]], list[Finding]]:
+    """Containment-check every artifact root and split it into base vs overlay parts.
+
+    Each raw ``artifacts[].path`` is validated for containment *before* any
+    normalization or distribution-class classification, so an absolute or ``..``
+    root cannot be canonicalized into innocuous parts and trusted outside the pack
+    boundary. Returns the contained base roots, the contained overlay roots, and
+    any containment findings.
+    """
     base_roots: list[tuple[str, ...]] = []
     overlay_parts_list: list[tuple[str, ...]] = []
+    findings: list[Finding] = []
     for artifact in record.get("artifacts", []) or []:
         if not isinstance(artifact, dict):
             continue
         path = artifact.get("path")
         if not isinstance(path, str):
             continue
-        # Validate containment on the raw path first: an unvalidated absolute or
-        # ``..`` root would otherwise be canonicalized into innocuous parts and
-        # trusted as a distribution/overlay root outside the pack boundary.
         try:
             resolve_within_root(root, path)
         except ValueError as exc:
@@ -183,19 +196,26 @@ def _artifact_root_findings(record: dict[str, object], root: Path, rel: str) -> 
             overlay_parts_list.append(parts)
         else:
             base_roots.append(parts)
+    return base_roots, overlay_parts_list, findings
 
+
+def _overlay_overlap_findings(
+    base_roots: list[tuple[str, ...]],
+    overlay_parts_list: list[tuple[str, ...]],
+    rel: str,
+) -> list[Finding]:
+    """Flag consumer overlay roots that share a subtree with any base artifact root."""
+    findings: list[Finding] = []
     for overlay_parts in overlay_parts_list:
-        for base in base_roots:
-            if subtrees_overlap(overlay_parts, base):
-                findings.append(
-                    Finding(
-                        "provenance",
-                        rel,
-                        "consumer-specific overlay root overlaps a base artifact root",
-                        family="overlay",
-                    )
+        if any(subtrees_overlap(overlay_parts, base) for base in base_roots):
+            findings.append(
+                Finding(
+                    "provenance",
+                    rel,
+                    "consumer-specific overlay root overlaps a base artifact root",
+                    family="overlay",
                 )
-                break
+            )
     return findings
 
 

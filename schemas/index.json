@@ -54,6 +54,18 @@
       "fixtures": ["schemas/examples/artifact-boundary.v0.example.json"]
     },
     {
+      "family": "runtime-visibility",
+      "id": "urn:aces-scenario-pack:schema:runtime-visibility:v0",
+      "path": "schemas/runtime-visibility.v0.schema.json",
+      "version": "0.1.0",
+      "status": "draft",
+      "title": "ACES Scenario Pack — Runtime Visibility (v0)",
+      "source": "Authored in this repository from contracts/scenario-pack-contract.md 'Runtime Visibility' and docs/runtime-visibility-design-guardrails.md. No upstream schema ported.",
+      "ownership": "aces-scenario-packs owns the runtime-visibility axis (who may see an artifact root at runtime). Orthogonal to artifact-boundary disposition; does not redefine SDL semantics or downstream delivery behavior.",
+      "compatibility_impact": "New pre-1.0 schema; additive. No prior published version. Future changes follow docs/versioning.md.",
+      "fixtures": ["schemas/examples/runtime-visibility.v0.example.json"]
+    },
+    {
       "family": "runtime-profile",
       "id": "urn:aces-scenario-pack:schema:runtime-profile:v0",
       "path": "schemas/runtime-profile.v0.schema.json",

@@ -27,13 +27,22 @@ PYTHONPATH=tools python3 -m aces_pack_tools <command> ...
   against the published schemas. With `--family <family>` the target is a single
   JSON record; with a directory target the tool validates each `<family>.json`
   record it finds (its discovery convention), checks `packId` consistency, runs
-  the runtime-profile portability gate, and checks artifact-boundary paths stay
-  within the pack.
+  the runtime-profile portability gate, checks artifact-boundary paths stay
+  within the pack, and — when a `runtime-visibility.json` record is present —
+  runs the runtime-visibility containment, tier-conflict, and participant
+  leak-scan gates.
 - `leak <target> [--denylist terms.txt]` — scan a file or directory for
   secret-shaped material (private keys, cloud access keys, bearer tokens,
   assigned secrets) and any caller-supplied denylisted vocabulary term. The
   denylist is configuration; the tool ships none, so it carries no
   downstream-private vocabulary itself.
+- `visibility <pack-dir> [--denylist terms.txt]` — check a pack's
+  `runtime-visibility.json` record: schema conformance, per-root path
+  containment, tier-conflict detection, and a leak scan of every
+  participant-visible root for secret-shaped and operator/oracle material. This
+  is the release/CI entry point that re-runs the participant scan with a
+  caller-supplied operator/oracle denylist. A pack with no visibility record is
+  clean.
 - `release <record> --schema-index schemas/index.json` — validate a release
   record and cross-check its `schemaVersions` against the schema index.
 

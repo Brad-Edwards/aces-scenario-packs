@@ -36,6 +36,11 @@ conflate pack contract concerns:
 - Artifact-boundary metadata describes which artifacts are authored, generated,
   included, excluded, or consumer-supplied. It must not move capture or
   inventory workflow assets before the ownership issue resolves.
+- Runtime-visibility metadata classifies each artifact root by who may see it at
+  runtime (participant-visible, operator-only, oracle-only, distribution-
+  restricted). It is orthogonal to artifact-boundary disposition, is a contract
+  mapping rather than a mandated directory layout, and must not encode downstream
+  delivery, scoreboard, or catalog behavior.
 - Runtime-profile metadata may describe portable, ACES-native runtime
   expectations needed to understand a pack. It must not require private
   infrastructure or product-specific execution behavior.

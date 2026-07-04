@@ -15,8 +15,9 @@ from pathlib import Path
 from .leak import scan_pack, scan_text
 from .model import Finding
 from .release import check_release
-from .schema import SchemaIndex, _validated_file
+from .schema import SchemaIndex, _validated_file, conformance_errors, load_json, within_root
 from .validate import validate_pack, validate_record
+from .visibility import check_visibility
 
 _DEFAULT_INDEX = "schemas/index.json"
 
@@ -53,6 +54,15 @@ def build_parser() -> argparse.ArgumentParser:
     release.add_argument("--schema-index", default=_DEFAULT_INDEX, help="Path to schemas/index.json.")
     release.add_argument("--format", choices=("text", "json"), default="text")
 
+    visibility = sub.add_parser(
+        "visibility",
+        help="Check a pack's runtime-visibility record: tier containment and participant leak scan.",
+    )
+    visibility.add_argument("target", help="A pack directory containing runtime-visibility.json.")
+    visibility.add_argument("--denylist", help="File of operator/oracle leak terms, one per line (# comments allowed).")
+    visibility.add_argument("--schema-index", default=_DEFAULT_INDEX, help="Path to schemas/index.json.")
+    visibility.add_argument("--format", choices=("text", "json"), default="text")
+
     return parser
 
 
@@ -84,10 +94,41 @@ def _run_release(args: argparse.Namespace) -> list[Finding]:
     return check_release(Path(args.record), SchemaIndex(args.schema_index))
 
 
+def _run_visibility(args: argparse.Namespace) -> list[Finding]:
+    """Handle the ``visibility`` subcommand: runtime-visibility record + boundary gates.
+
+    Validates the pack's ``runtime-visibility.json`` against its schema and runs
+    the containment, tier-conflict, and participant leak gates. This is the
+    release/CI entry point that re-runs the participant scan with a caller-supplied
+    operator/oracle denylist. A pack with no visibility record has nothing to
+    check and is clean.
+    """
+    index = SchemaIndex(args.schema_index)
+    target = Path(args.target)
+    if not target.is_dir():
+        raise ValueError("visibility: target must be a pack directory")
+    record_path = target / "runtime-visibility.json"
+    if not record_path.is_file():
+        return []
+    if not within_root(target, record_path):
+        return [Finding("runtime-visibility", "runtime-visibility.json",
+                        "record is a symlink escaping the pack root", family="runtime-visibility")]
+    denylist = _read_denylist(args.denylist)
+    record = load_json(record_path)
+    schema = index.schema_for("runtime-visibility")
+    findings = [
+        Finding("schema", "runtime-visibility.json", err, family="runtime-visibility")
+        for err in conformance_errors(record, schema)
+    ]
+    findings.extend(check_visibility(record, target, "runtime-visibility.json", extra_terms=denylist))
+    return findings
+
+
 _COMMANDS = {
     "validate": _run_validate,
     "leak": _run_leak,
     "release": _run_release,
+    "visibility": _run_visibility,
 }
 
 

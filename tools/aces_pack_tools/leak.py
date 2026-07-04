@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Callable
 
 from .model import Finding
 from .schema import within_root
@@ -54,8 +55,15 @@ def scan_pack(
     pack_root: str | Path,
     denylist_terms: tuple[str, ...] = (),
     skip_dirs: tuple[str, ...] = (".git",),
+    extra_scanners: tuple[Callable[[str, str], list[Finding]], ...] = (),
 ) -> list[Finding]:
-    """Recursively scan a pack directory, skipping binaries and symlink escapes."""
+    """Recursively scan a pack directory, skipping binaries and symlink escapes.
+
+    ``extra_scanners`` are additional per-file text scanners ``(text, rel) ->
+    findings`` run in the same walk as the built-in secret/denylist scan, so a
+    caller can layer extra checks without a second traversal (and without those
+    checks being baked into this reusable, vocabulary-free scanner).
+    """
     root = Path(pack_root).resolve()
     findings: list[Finding] = []
     for path in sorted(root.rglob("*")):
@@ -77,4 +85,6 @@ def scan_pack(
         except (UnicodeDecodeError, OSError):
             continue
         findings.extend(scan_text(text, rel, denylist_terms))
+        for scanner in extra_scanners:
+            findings.extend(scanner(text, rel))
     return findings

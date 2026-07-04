@@ -9,6 +9,7 @@
 - [Capture workflow placement decision](capture-workflow-placement.md)
 - [Schema design guardrails](schema-design-guardrails.md)
 - [Tooling design guardrails](tooling-design-guardrails.md)
+- [Runtime visibility design guardrails](runtime-visibility-design-guardrails.md)
 - [Scenario-pack schemas](../schemas/README.md)
 - [Tracking issues](tracking-issues.md)
 - [Versioning and release policy](versioning.md)

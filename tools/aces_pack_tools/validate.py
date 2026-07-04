@@ -20,6 +20,7 @@ from .schema import (
     resolve_within_root,
     within_root,
 )
+from .visibility import check_visibility
 
 # A runtime profile's requirements must name portable capabilities, not private
 # hosts, endpoints, IP literals, or product runtimes.
@@ -141,6 +142,10 @@ def validate_pack(pack_root: str | Path, index: SchemaIndex) -> list[Finding]:
             pack_ids.setdefault(record["packId"], []).append(rel)
         if family == "artifact-boundary":
             findings.extend(_check_artifact_boundary(record, root, rel))
+        if family == "runtime-visibility":
+            # The runtime-visibility axis adds path-containment, tier-conflict,
+            # and participant-tier leak gates the schema alone cannot express.
+            findings.extend(check_visibility(record, root, rel))
     for family in REQUIRED_FAMILIES:
         if family not in present:
             findings.append(

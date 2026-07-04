@@ -105,6 +105,42 @@ referenced below.
   downstream delivery system. Guidance deferred to
   Brad-Edwards/aces-scenario-packs#9.
 
+## Runtime Visibility
+
+Every pack artifact root also carries a **runtime-visibility** classification:
+who may see that root at runtime. This axis is orthogonal to, and composable
+with, the artifact-boundary disposition axis (how an artifact enters the pack).
+A single root MAY be classified by both; neither substitutes for the other.
+
+Visibility is a contract classification over pack-relative roots, not a mandated
+directory layout. A pack maps its existing roots to tiers; it is never required
+to adopt literal `public/`, `operator/`, or `oracle/` directory names.
+
+Canonical tiers:
+
+- **participant-visible** (public) — MAY be shown to scenario participants.
+- **operator-only** — limited to operators running the scenario.
+- **oracle-only** (private) — answers, proof predicates, and scoring internals;
+  MUST NOT be participant-visible.
+- **distribution-restricted** — bundled content a catalog MAY ship only to
+  licensed operators.
+
+Two rules make the classification enforceable:
+
+- **Leak scan.** A participant-visible root MUST pass a scan for secret-shaped
+  material and for the generic structural indicators of operator/oracle content
+  (answers, flags, credentials, proof predicates, scoring internals, hidden-path
+  labels). Release tooling re-runs the same scan over the staged participant
+  tier. The ecosystem-specific denylist is caller-supplied; findings report the
+  category, never the matched text.
+- **Packaging boundary split.** A root classifies a whole subtree. At packaging
+  time each tier stages into its own release root, with path-containment checks
+  (rejecting `..`, absolute paths, and symlink escapes) so operator-only,
+  oracle-only, and distribution-restricted material can never be copied into a
+  participant artifact. Declared roots MUST NOT overlap across different tiers: a
+  root nested inside another with a different tier is rejected, so staging and
+  scanning stay within one tier.
+
 ## Lifecycle States
 
 A pack's lifecycle state describes its maturity and publication status as an

@@ -1,0 +1,9 @@
+{
+  "packId": "aces-example-pack",
+  "roots": [
+    {"path": "brief/", "visibility": "participant-visible", "note": "Participant-facing scenario brief and starting materials."},
+    {"path": "runbook/", "visibility": "operator-only", "note": "Operator runbook for facilitating the scenario."},
+    {"path": "answers/", "visibility": "oracle-only", "note": "Answer key, proof predicates, and scoring internals."},
+    {"path": "licensed/", "visibility": "distribution-restricted", "note": "Bundled content shipped only to licensed operators."}
+  ]
+}

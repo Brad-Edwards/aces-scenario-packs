@@ -38,6 +38,7 @@ FAMILY_EXAMPLE = {
     "compatibility": EXAMPLES / "compatibility.v0.example.json",
     "provenance": EXAMPLES / "provenance.v0.example.json",
     "artifact-boundary": EXAMPLES / "artifact-boundary.v0.example.json",
+    "runtime-visibility": EXAMPLES / "runtime-visibility.v0.example.json",
     "runtime-profile": EXAMPLES / "runtime-profile.v0.example.json",
     "delivery-bundle": EXAMPLES / "delivery-bundle.v0.example.json",
     "lifecycle": EXAMPLES / "lifecycle.v0.example.json",
@@ -352,6 +353,40 @@ class CliContractTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertIn("findings", payload)
         self.assertEqual([], payload["findings"])
+
+    def _visibility_pack(self, tmp, roots, files=()):
+        for rel, content in files:
+            target = Path(tmp) / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+        (Path(tmp) / "runtime-visibility.json").write_text(
+            json.dumps({"packId": "p", "roots": roots}), encoding="utf-8"
+        )
+
+    def test_visibility_clean_pack_exits_zero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._visibility_pack(
+                tmp,
+                [{"path": "public/", "visibility": "participant-visible"}],
+                files=[("public/readme.md", "A portable ACES scenario brief.")],
+            )
+            result = self._run("visibility", tmp, "--schema-index", str(INDEX))
+            self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_visibility_leaking_pack_exits_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._visibility_pack(
+                tmp,
+                [{"path": "public/", "visibility": "participant-visible"}],
+                files=[("public/leak.md", "key = AKIA" + "ABCDEFGHIJKLMNOP")],
+            )
+            result = self._run("visibility", tmp, "--schema-index", str(INDEX))
+            self.assertEqual(1, result.returncode)
+
+    def test_visibility_pack_without_record_exits_zero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = self._run("visibility", tmp, "--schema-index", str(INDEX))
+            self.assertEqual(0, result.returncode, result.stderr)
 
 
 class CiExampleTests(unittest.TestCase):

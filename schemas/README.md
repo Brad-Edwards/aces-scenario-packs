@@ -26,6 +26,9 @@ All families are JSON Schema Draft 2020-12 and version-lined with a
   (references only).
 - **artifact-boundary** — which artifacts are authored, generated, included,
   excluded, or consumer-supplied.
+- **runtime-visibility** — who may see each artifact root at runtime
+  (participant-visible, operator-only, oracle-only, distribution-restricted);
+  orthogonal to artifact-boundary disposition.
 - **runtime-profile** — portable, ACES-native runtime expectations.
 - **delivery-bundle** — audience and packaging in portable terms.
 - **lifecycle** — pack maturity state from the contract's ACES-native set.

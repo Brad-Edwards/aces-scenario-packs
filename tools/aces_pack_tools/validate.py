@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 
 from .model import Finding
+from .provenance import check_provenance
 from .schema import (
     SchemaIndex,
     conformance_errors,
@@ -117,6 +118,10 @@ def _extra_family_gates(family: str, record: object, root: Path, rel: str) -> li
     if family == "runtime-visibility":
         # Path-containment, tier-conflict, and participant-tier leak gates.
         return check_visibility(record, root, rel)
+    if family == "provenance":
+        # Content-safety, publication-review, attribution, source-reference, and
+        # consumer-overlay gates the provenance schema cannot express.
+        return check_provenance(record, root, rel)
     return []
 
 

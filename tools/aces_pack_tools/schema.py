@@ -238,6 +238,26 @@ def pack_relative(root: str | Path, path: str | Path) -> str:
         return path.name
 
 
+def normalize_subtree(path: str) -> tuple[str, ...]:
+    """Split a pack-relative root path into normalized, non-empty POSIX parts.
+
+    Shared by every axis that classifies whole subtrees (runtime visibility,
+    provenance distribution class) so their overlap semantics cannot drift apart.
+    """
+    return tuple(part for part in path.strip("/").split("/") if part and part != ".")
+
+
+def subtrees_overlap(left: tuple[str, ...], right: tuple[str, ...]) -> bool:
+    """True when one root subtree contains or equals the other (ancestor/descendant/equal).
+
+    A root classifies a whole subtree, so two roots overlap when one path is a
+    prefix of the other. Callers that require different classifications to stay in
+    disjoint subtrees reject overlapping roots.
+    """
+    shortest = min(len(left), len(right))
+    return left[:shortest] == right[:shortest]
+
+
 @dataclass(frozen=True)
 class SchemaEntry(object):
     """One schema-index entry: family, id, path, version, status, and fixtures."""

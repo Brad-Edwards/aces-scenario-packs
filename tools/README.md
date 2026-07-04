@@ -55,5 +55,9 @@ Deliberately **not** owned here yet, tracked separately:
   the boundary-split packaging action that assembles delivery bundles — deferred
   (packaging intersects the delivery-bundle guidance,
   Brad-Edwards/aces-scenario-packs#9).
-- The authoring CLI and its ownership plan — Brad-Edwards/aces-scenario-packs#13.
+- The authoring CLI and its ownership plan are recorded in the
+  [authoring and tooling ownership plan](../docs/authoring-tooling-ownership.md)
+  (ADR 0003, Brad-Edwards/aces-scenario-packs#13): pack-scaffolding and
+  metadata-authoring helpers are owned here and adopt this same tooling contract,
+  but are not built yet.
 - Capture and inventory workflow placement — Brad-Edwards/aces-scenario-packs#14.

@@ -10,3 +10,4 @@ published repository policy.
 
 - [ADR 0001: Scenario-Pack Contract Boundary](0001-scenario-pack-contract-boundary.md)
 - [ADR 0002: Scenario-Pack Validation and Release Tooling](0002-scenario-pack-validation-tooling.md)
+- [ADR 0003: Authoring and Tooling Ownership](0003-authoring-tooling-ownership.md)

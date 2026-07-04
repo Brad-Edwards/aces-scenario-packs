@@ -5,6 +5,7 @@
 - [Migration planning](migration-plan.md)
 - [Documentation scrub policy](scrub-policy.md)
 - [Authoring and capture boundary](authoring-boundary.md)
+- [Authoring and tooling ownership plan](authoring-tooling-ownership.md)
 - [Schema design guardrails](schema-design-guardrails.md)
 - [Tooling design guardrails](tooling-design-guardrails.md)
 - [Scenario-pack schemas](../schemas/README.md)

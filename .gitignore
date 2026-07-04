@@ -8,3 +8,7 @@ coverage.xml
 dist/
 build/
 .DS_Store
+
+# Ground Control operational artifacts (not workflow state)
+.gc/sonar/
+.gc/telemetry/

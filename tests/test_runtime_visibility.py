@@ -302,9 +302,10 @@ class ValidatePackWiringTests(unittest.TestCase):
 
     def test_pack_without_visibility_record_is_unaffected(self):
         with tempfile.TemporaryDirectory() as tmp:
-            examples = ROOT / "schemas" / "examples"
+            # Resolve each family's fixture through the index so a version bump
+            # (for example provenance v0 -> v1) does not strand this builder.
             for family in ("pack-metadata", "compatibility", "provenance", "lifecycle"):
-                obj = load_json(examples / f"{family}.v0.example.json")
+                obj = load_json(ROOT / self.index.entry(family).fixtures[0])
                 (Path(tmp) / f"{family}.json").write_text(json.dumps(obj), encoding="utf-8")
             self.assertEqual([], _errors(validate_pack(Path(tmp), self.index)))
 

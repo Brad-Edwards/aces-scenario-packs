@@ -73,7 +73,10 @@ Two automated surfaces and two review gates enforce this policy.
    Findings report the pattern or category name, never the matched material.
 
 Packs additionally attest their scrub state through the `scrubStatus` field of
-the [`provenance.v0`](../schemas/provenance.v0.schema.json) schema.
+the [`provenance.v1`](../schemas/provenance.v1.schema.json) schema. Scrub status
+(downstream-vocabulary scrub) is a separate axis from that schema's
+content-safety attestation (exclusion of real sensitive content) and its
+publication-review checklist (clearance to publish).
 
 ### Review
 

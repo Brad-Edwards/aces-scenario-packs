@@ -1,0 +1,64 @@
+{
+  "packId": "aces-example-pack",
+  "sources": [
+    {
+      "id": "aces-contract",
+      "kind": "original-design",
+      "license": "MIT",
+      "usage": "Authored in this repository from the public scenario-pack contract; no upstream port.",
+      "attributionRequired": false,
+      "used": "Contract structure and ACES-native terminology.",
+      "excluded": "No downstream catalog vocabulary or private paths."
+    },
+    {
+      "id": "portable-framework",
+      "kind": "framework",
+      "license": "Apache-2.0",
+      "usage": "Referenced control-taxonomy category names; redistribution permitted with attribution.",
+      "attributionRequired": true,
+      "attributionText": "Portable ACES-native framework reference (synthetic example).",
+      "used": "Category names only.",
+      "excluded": "Implementation code and datasets."
+    }
+  ],
+  "scrubStatus": "not-required",
+  "ownership": "aces-scenario-packs",
+  "artifacts": [
+    {
+      "path": "scenarios/",
+      "distributionClass": "open",
+      "sources": ["aces-contract"],
+      "note": "Participant-adoptable scenario briefs."
+    },
+    {
+      "path": "operator/",
+      "distributionClass": "internal-only",
+      "sources": ["aces-contract"]
+    },
+    {
+      "path": "generated/",
+      "distributionClass": "generated"
+    },
+    {
+      "path": "overlays/example-consumer/",
+      "distributionClass": "consumer-specific",
+      "sources": ["portable-framework"],
+      "note": "Removable overlay root; disjoint from every base artifact root."
+    }
+  ],
+  "contentSafety": {
+    "noRealMalware": true,
+    "noRealThirdPartyTargets": true,
+    "noRealCredentials": true,
+    "noSensitiveData": true,
+    "offensiveToolingBoundary": true,
+    "note": "Synthetic, ACES-native example content only."
+  },
+  "publicationReview": {
+    "licensing": "approved",
+    "attribution": "approved",
+    "sensitiveData": "approved",
+    "offensiveTooling": "approved",
+    "consumerOverlay": "approved"
+  }
+}

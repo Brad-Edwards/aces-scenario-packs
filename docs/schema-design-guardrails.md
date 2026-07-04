@@ -13,6 +13,9 @@ Schema work must build from these incumbents:
   and compatibility boundaries.
 - [ADR 0001](decisions/adrs/0001-scenario-pack-contract-boundary.md) for the
   ACES core / scenario-pack / downstream-consumer boundary.
+- [Provenance ledger design guardrails](provenance-ledger-design-guardrails.md)
+  for contract-v1 source, distribution, content-safety, publication-review, and
+  consumer-overlay boundaries.
 - [Authoring and capture boundary](authoring-boundary.md) for capture and
   inventory workflow ownership limits.
 - [Versioning and release policy](versioning.md) for published-schema version
@@ -30,9 +33,13 @@ conflate pack contract concerns:
 - Compatibility metadata describes the pack's declared ACES and pack-version
   compatibility. It does not encode a downstream consumer's deployment matrix,
   branch rules, labels, or workflow states.
-- Provenance metadata records source, ownership, scrub status, and adoption
-  impact. It must not copy private source content, real credentials, operator
-  tokens, private hosts, or customer data.
+- Provenance metadata records the pack's provenance ledger: first-class source
+  rows, per-artifact distribution class, content-safety attestation, publication
+  review, and consumer-overlay boundaries. Distribution class is separate from
+  runtime visibility, artifact-boundary disposition, lifecycle state,
+  scrub/adoption notes, and review status. The ledger must not copy private
+  source content, real credentials, operator tokens, private hosts, or customer
+  data.
 - Artifact-boundary metadata describes which artifacts are authored, generated,
   included, excluded, or consumer-supplied. It must not move capture or
   inventory workflow assets before the ownership issue resolves.

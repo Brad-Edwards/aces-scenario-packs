@@ -17,9 +17,10 @@ from .model import Finding
 from .release import check_release
 from .schema import SchemaIndex, _validated_file, conformance_errors, load_json, within_root
 from .validate import validate_pack, validate_record
-from .visibility import check_visibility
+from .visibility import RECORD_NAME, check_visibility
 
 _DEFAULT_INDEX = "schemas/index.json"
+_INDEX_HELP = "Path to schemas/index.json."
 
 
 def _read_denylist(path: str | None) -> tuple[str, ...]:
@@ -41,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     validate = sub.add_parser("validate", help="Validate pack records against published schemas.")
     validate.add_argument("target", help="A JSON record file (with --family) or a pack directory.")
     validate.add_argument("--family", help="Schema family when the target is a single record.")
-    validate.add_argument("--schema-index", default=_DEFAULT_INDEX, help="Path to schemas/index.json.")
+    validate.add_argument("--schema-index", default=_DEFAULT_INDEX, help=_INDEX_HELP)
     validate.add_argument("--format", choices=("text", "json"), default="text")
 
     leak = sub.add_parser("leak", help="Scan pack content for secret-shaped or denylisted material.")
@@ -51,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     release = sub.add_parser("release", help="Validate a release record and cross-check schema versions.")
     release.add_argument("record", help="A release JSON record.")
-    release.add_argument("--schema-index", default=_DEFAULT_INDEX, help="Path to schemas/index.json.")
+    release.add_argument("--schema-index", default=_DEFAULT_INDEX, help=_INDEX_HELP)
     release.add_argument("--format", choices=("text", "json"), default="text")
 
     visibility = sub.add_parser(
@@ -60,7 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     visibility.add_argument("target", help="A pack directory containing runtime-visibility.json.")
     visibility.add_argument("--denylist", help="File of operator/oracle leak terms, one per line (# comments allowed).")
-    visibility.add_argument("--schema-index", default=_DEFAULT_INDEX, help="Path to schemas/index.json.")
+    visibility.add_argument("--schema-index", default=_DEFAULT_INDEX, help=_INDEX_HELP)
     visibility.add_argument("--format", choices=("text", "json"), default="text")
 
     return parser
@@ -107,20 +108,20 @@ def _run_visibility(args: argparse.Namespace) -> list[Finding]:
     target = Path(args.target)
     if not target.is_dir():
         raise ValueError("visibility: target must be a pack directory")
-    record_path = target / "runtime-visibility.json"
+    record_path = target / RECORD_NAME
     if not record_path.is_file():
         return []
     if not within_root(target, record_path):
-        return [Finding("runtime-visibility", "runtime-visibility.json",
+        return [Finding("runtime-visibility", RECORD_NAME,
                         "record is a symlink escaping the pack root", family="runtime-visibility")]
     denylist = _read_denylist(args.denylist)
     record = load_json(record_path)
     schema = index.schema_for("runtime-visibility")
     findings = [
-        Finding("schema", "runtime-visibility.json", err, family="runtime-visibility")
+        Finding("schema", RECORD_NAME, err, family="runtime-visibility")
         for err in conformance_errors(record, schema)
     ]
-    findings.extend(check_visibility(record, target, "runtime-visibility.json", extra_terms=denylist))
+    findings.extend(check_visibility(record, target, RECORD_NAME, extra_terms=denylist))
     return findings
 
 

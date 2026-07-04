@@ -11,8 +11,8 @@ report the pattern name, never the matched material.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from .model import Finding
 from .schema import within_root

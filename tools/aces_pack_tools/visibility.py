@@ -27,11 +27,15 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
+from dataclasses import dataclass
 
 from . import leak
 from .model import Finding
 from .schema import pack_relative, resolve_within_root
+
+# Canonical filename for a pack's runtime-visibility record.
+RECORD_NAME = "runtime-visibility.json"
 
 # The single source of truth for tier behavior. Each tier answers: is it
 # participant-visible (and therefore leak-scanned), and which release root does
@@ -150,30 +154,34 @@ def check_visibility(
     participant-visible root. Schema-shape errors are handled separately by the
     conformance checker; this covers what the schema cannot express.
     """
-    pack_root = Path(root).resolve()
-    findings: list[Finding] = []
     if not isinstance(record, dict):
-        return findings
+        return []
+    pack_root = Path(root).resolve()
+    plans, findings = staging_plan(record, pack_root, rel)
+    findings.extend(_conflict_findings(record, rel))
+    findings.extend(_participant_leak_findings(plans, pack_root, extra_terms))
+    return findings
 
-    plans, plan_findings = staging_plan(record, pack_root, rel)
-    findings.extend(plan_findings)
 
-    # Overlap/tier-conflict gate: two roots whose subtrees overlap
-    # (ancestor/descendant/equal) but carry different tiers would let the
-    # more-restricted subtree stage into, or be scanned as, the other tier.
-    # Rejecting them keeps recursive staging and scanning within a single tier.
+def _conflict_findings(record: dict[str, object], rel: str) -> list[Finding]:
+    """Flag overlapping artifact roots that carry different runtime-visibility tiers.
+
+    Two roots whose subtrees overlap (ancestor/descendant/equal) but carry
+    different tiers would let the more-restricted subtree stage into, or be
+    scanned as, the other tier. Rejecting them keeps recursive staging and
+    scanning within a single tier.
+    """
     classified: list[tuple[tuple[str, ...], str]] = []
     for item in record.get("roots", []) or []:
         if not isinstance(item, dict):
             continue
         path = item.get("path")
         visibility = item.get("visibility")
-        if not isinstance(path, str) or not isinstance(visibility, str):
-            continue
-        classified.append((_normalize(path), visibility))
-    for i in range(len(classified)):
-        for j in range(i + 1, len(classified)):
-            (left, left_tier), (right, right_tier) = classified[i], classified[j]
+        if isinstance(path, str) and isinstance(visibility, str):
+            classified.append((_normalize(path), visibility))
+    findings: list[Finding] = []
+    for i, (left, left_tier) in enumerate(classified):
+        for right, right_tier in classified[i + 1:]:
             if left_tier != right_tier and _subtrees_overlap(left, right):
                 findings.append(
                     Finding(
@@ -183,7 +191,14 @@ def check_visibility(
                         family="runtime-visibility",
                     )
                 )
+    return findings
 
+
+def _participant_leak_findings(
+    plans: list["StagePlan"], pack_root: Path, extra_terms: tuple[str, ...]
+) -> list[Finding]:
+    """Leak-scan every participant-visible root, warning when a declared root is missing."""
+    findings: list[Finding] = []
     for plan in plans:
         if not tier_policy(plan.tier)["participant_visible"]:
             continue
@@ -205,28 +220,17 @@ def check_visibility(
     return findings
 
 
+@dataclass(frozen=True)
 class StagePlan(object):
     """One packaging-boundary staging entry: a source root and its tier release destination."""
 
-    __slots__ = ("source", "dest", "tier")
-
-    def __init__(self, source: str, dest: str, tier: str) -> None:
-        self.source = source
-        self.dest = dest
-        self.tier = tier
-
-    def __eq__(self, other: object) -> bool:
-        return (
-            isinstance(other, StagePlan)
-            and (self.source, self.dest, self.tier) == (other.source, other.dest, other.tier)
-        )
-
-    def __repr__(self) -> str:  # pragma: no cover - debugging aid
-        return f"StagePlan(source={self.source!r}, dest={self.dest!r}, tier={self.tier!r})"
+    source: str
+    dest: str
+    tier: str
 
 
 def staging_plan(
-    record: object, root: str | Path, rel: str = "runtime-visibility.json"
+    record: object, root: str | Path, rel: str = RECORD_NAME
 ) -> tuple[list[StagePlan], list[Finding]]:
     """Compute the per-tier packaging boundary split for a runtime-visibility record.
 

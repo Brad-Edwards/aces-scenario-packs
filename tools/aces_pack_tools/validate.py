@@ -110,6 +110,16 @@ def _check_artifact_boundary(record: object, root: Path, rel: str) -> list[Findi
     return findings
 
 
+def _extra_family_gates(family: str, record: object, root: Path, rel: str) -> list[Finding]:
+    """Run the per-family contract gates the schema alone cannot express."""
+    if family == "artifact-boundary":
+        return _check_artifact_boundary(record, root, rel)
+    if family == "runtime-visibility":
+        # Path-containment, tier-conflict, and participant-tier leak gates.
+        return check_visibility(record, root, rel)
+    return []
+
+
 def validate_pack(pack_root: str | Path, index: SchemaIndex) -> list[Finding]:
     """Validate a pack directory against the published schemas and minimum shape.
 
@@ -140,12 +150,7 @@ def validate_pack(pack_root: str | Path, index: SchemaIndex) -> list[Finding]:
         findings.extend(_validate_loaded(record, family, index, rel))
         if isinstance(record, dict) and isinstance(record.get("packId"), str):
             pack_ids.setdefault(record["packId"], []).append(rel)
-        if family == "artifact-boundary":
-            findings.extend(_check_artifact_boundary(record, root, rel))
-        if family == "runtime-visibility":
-            # The runtime-visibility axis adds path-containment, tier-conflict,
-            # and participant-tier leak gates the schema alone cannot express.
-            findings.extend(check_visibility(record, root, rel))
+        findings.extend(_extra_family_gates(family, record, root, rel))
     for family in REQUIRED_FAMILIES:
         if family not in present:
             findings.append(

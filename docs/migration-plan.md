@@ -17,3 +17,8 @@ Each migration issue should state:
 Do not migrate material only because it exists elsewhere. Move it only when it
 belongs to the public ACES scenario-pack contract or to reusable adoption
 support for that contract.
+
+Scrub requirements for migrated content and canonical docs are defined in the
+[documentation scrub policy](scrub-policy.md); each migration issue carries a
+source-specific scrub checklist derived from it, and keeps its source-specific
+terms in a private, caller-supplied scanner denylist rather than in the issue.

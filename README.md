@@ -26,9 +26,11 @@ in the ACES core repository.
 - Downstream catalogs consume the pack contract and may add private runtime,
   delivery, class-management, or product integrations outside the canonical pack
   contract.
-- Capture and inventory workflows may remain in ACES core, move here, move to
-  APTL, or split by responsibility. That boundary is tracked as a planning
-  issue before any migration happens.
+- Capture and inventory work is split by responsibility (see
+  [ADR 0004](docs/decisions/adrs/0004-capture-workflow-placement.md)):
+  ACES-semantic capture stays in ACES core, pack-authoring capture support is
+  adopted here only on a linked issue, and runtime capture stays downstream. No
+  capture asset is moved before its linked follow-up records a placement.
 
 ## Initial Surfaces
 

@@ -6,6 +6,7 @@
 - [Documentation scrub policy](scrub-policy.md)
 - [Authoring and capture boundary](authoring-boundary.md)
 - [Authoring and tooling ownership plan](authoring-tooling-ownership.md)
+- [Capture workflow placement decision](capture-workflow-placement.md)
 - [Schema design guardrails](schema-design-guardrails.md)
 - [Tooling design guardrails](tooling-design-guardrails.md)
 - [Scenario-pack schemas](../schemas/README.md)

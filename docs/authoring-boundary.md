@@ -14,8 +14,50 @@ inventory workflow.
 - APTL may own runtime-specific capture, range, or attack-path workflow
   implementations when those assets are consumer-specific.
 
-The open capture workflow placement issue should decide whether capture assets
-are moved, referenced, or split by boundary.
+The capture workflow placement question is now decided in
+[ADR 0004](decisions/adrs/0004-capture-workflow-placement.md) and the
+[capture workflow placement decision](capture-workflow-placement.md): capture
+work is split by responsibility (ACES-semantic capture stays in ACES core,
+pack-authoring capture support adopts here only on a linked issue, and runtime
+capture stays downstream), and no capture asset is moved before its linked
+follow-up records a placement.
+
+## Capture Placement Review Guardrails
+
+ASP-0014 must record the capture/inventory ownership decision before any asset
+is moved. The decision may keep assets where they are, move a bounded subset, or
+split them by responsibility, but it must classify each asset by the
+responsibility it actually performs:
+
+- **ACES-semantic capture responsibility** — definitions or checks that change
+  SDL participant, evidence, or runtime-independent scenario semantics. These
+  belong with ACES core unless the asset only references public pack structure.
+- **Pack-authoring capture support** — portable pack guidance, metadata,
+  provenance, artifact-boundary declarations, runtime-profile declarations, and
+  static validation that help authors describe capture expectations without
+  executing capture. These may belong here when they reuse the published
+  scenario-pack contract and schema index.
+- **APTL/runtime capture responsibility** — concrete inventory collection,
+  range orchestration, attack-path execution, runtime adapters, environment
+  binding, credentials, private repository state, or product-specific workflow
+  behavior. These stay downstream unless a linked ownership issue explicitly
+  extracts a portable pack-authoring subset.
+
+The review must prefer a split by responsibility over a split by source
+repository when a single workflow mixes semantic definitions, pack metadata, and
+runtime execution. The seam for future extension is the responsibility category
+plus the affected schema family or tooling gate, not the current file path or
+downstream catalog location.
+
+Any capture support adopted here must pass the same cross-cutting gates as
+`aces_pack_tools`: schema resolution through `schemas/index.json`, pack-root
+path containment for untrusted inputs, caller-supplied scrub vocabulary,
+portable `runtime-profile` terms, `artifact-boundary` disposition rules,
+sanitized `Finding` output, ordinary `argparse`/exit-code CLI behavior, and the
+repository `unittest`/`compileall` verification gates. It must not introduce
+duplicate schema registries, duplicate validation logic, a new exception
+hierarchy, a logging framework, network services, caches, databases, secret
+configuration, or OS-level exposure of tokens in process arguments.
 
 ## Authoring Helper Ownership Gates
 

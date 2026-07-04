@@ -19,6 +19,7 @@ REQUIRED_PATHS = [
     "docs/migration-plan.md",
     "docs/scrub-policy.md",
     "docs/authoring-boundary.md",
+    "docs/authoring-tooling-ownership.md",
     "docs/tracking-issues.md",
     "docs/versioning.md",
     "docs/branch-protection.md",

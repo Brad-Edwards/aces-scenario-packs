@@ -21,10 +21,15 @@ In scope:
 Out of scope until a linked issue resolves ownership:
 
 - Moving ACES core SDL authority.
-- Moving capture or inventory workflows.
 - Moving downstream runtime integrations.
 - Product-specific class management, scoreboard, portal, or delivery-system
   behavior.
+
+Capture and inventory placement is decided in
+[ADR 0004](decisions/adrs/0004-capture-workflow-placement.md): capture work is
+split by responsibility, so runtime capture stays downstream and only
+pack-authoring capture support may be adopted here — through a linked issue that
+records the asset's placement.
 
 ## Operating Model
 

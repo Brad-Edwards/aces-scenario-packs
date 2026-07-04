@@ -55,7 +55,7 @@ decided before any code lands. Nothing in this table is moved by this change.
 | Pack metadata / provenance generators — candidate, not yet present | none | Pack-structure authoring helper | aces-scenario-packs | Adopt here in a future issue; resolve schemas through `schemas/index.json` | Brad-Edwards/aces-scenario-packs#13 |
 | ACES SDL authoring / core semantic validators | Brad-Edwards/aces | SDL-semantic helper | Brad-Edwards/aces (stays) | Do not move — ACES core owns SDL semantics | aces#629 |
 | ACES CI / reference integration for the companion repo | Brad-Edwards/aces | Downstream runtime / capture helper | Brad-Edwards/aces (coordinate) | Do not move — coordinate integration, do not couple | aces#630 |
-| Capture / inventory workflow assets | Brad-Edwards/aptl | Downstream runtime / capture helper | Deferred — capture placement review | Do not move before the placement review resolves | aces-scenario-packs#14, aptl#591 |
+| Capture / inventory workflow assets | Brad-Edwards/aptl | Downstream runtime / capture helper | Split by responsibility — see [ADR 0004](decisions/adrs/0004-capture-workflow-placement.md); runtime capture stays downstream, pack-authoring capture support adopts here only on a linked issue | Do not move before the linked follow-up records the asset's placement | aces-scenario-packs#14, aptl#591 |
 | State-mutating release automation + boundary-split packaging | none | Release / packaging helper | Deferred — delivery-bundle guidance | Do not adopt until the delivery-bundle issue owns it | aces-scenario-packs#9 |
 
 ## ACES-Side And Downstream Follow-Ups

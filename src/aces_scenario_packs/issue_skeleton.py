@@ -66,9 +66,12 @@ class Operation(object):
 COMMON_ANCHORS = """\
 ## Contract Anchors
 - `scenarios/README.md`: authoritative scenario-pack convention and milestone structure.
-- `scenarios/_template/README.md`: build doctrine - offensive by default, one full scenario per pack, no stubs or hand-waved services, and `golden` only after participant-equivalent proof.
-- `docs/scenario-packs.md`: pack metadata, provenance ledger, compatibility manifest, profile bundles, validation oracle, and release boundaries.
-- `docs/golden-readiness.md`: isolated golden infrastructure, automated rehearsal, final manual participant walkthrough, and teardown proof.
+- `scenarios/_template/README.md`: build doctrine - offensive by default, one full scenario per pack, no stubs or
+  hand-waved services, and `golden` only after participant-equivalent proof.
+- `docs/scenario-packs.md`: pack metadata, provenance ledger, compatibility manifest, profile bundles, validation
+  oracle, and release boundaries.
+- `docs/golden-readiness.md`: isolated golden infrastructure, automated rehearsal, final manual participant walkthrough,
+  and teardown proof.
 """
 
 
@@ -134,14 +137,16 @@ def contract_body(plan: PackPlan) -> str:
     {pack_block(plan)}
     {COMMON_ANCHORS}
     ## Deliverables
-    - Create or link the real Ground Control DRAFT scenario requirement before stamping `pack.yaml.requirement`; do not synthesize a UID.
+    - Create or link the real Ground Control DRAFT scenario requirement before stamping `pack.yaml.requirement`; do not
+      synthesize a UID.
     - Scaffold `scenarios/{plan.pack_id}/` from `scenarios/_template/` with `aces-new-pack`.
     - Fill `pack.yaml`, `pack.compatibility.yaml`, and `docs/provenance-ledger.yaml` with truthful initial metadata.
     - Replace template prose in `README.md`, `docs/concepts.md`, `docs/attack-path.md`, and `docs/lineage.md`.
     - Record source adaptation decisions: what is used, excluded, changed, or locally designed.
 
     ## Acceptance Criteria
-    - The pack has the required minimum source shape: `pack.yaml`, `sdl/`, `docs/concepts.md`, `docs/attack-path.md`, and `docs/provenance-ledger.yaml`.
+    - The pack has the required minimum source shape: `pack.yaml`, `sdl/`, `docs/concepts.md`, `docs/attack-path.md`,
+      and `docs/provenance-ledger.yaml`.
     - Participant-facing framing is offensive by default unless the pack and briefing explicitly declare otherwise.
     - `pack.yaml.status` remains `draft` until a real live build exists.
 
@@ -158,16 +163,21 @@ def topology_body(plan: PackPlan) -> str:
     {pack_block(plan)}
     {COMMON_ANCHORS}
     ## Deliverables
-    - `sdl/` start-state model naming every required host, identity, domain, application, service, share, dataset, route, credential, tool, dependency, and objective state.
-    - `assets/` content for planted artifacts, briefing material, synthetic credentials, target data, and custom service/container source.
+    - `sdl/` start-state model naming every required host, identity, domain, application, service, share, dataset,
+      route, credential, tool, dependency, and objective state.
+    - `assets/` content for planted artifacts, briefing material, synthetic credentials, target data, and custom
+      service/container source.
     - Reference-triangle design mapping the same path into `build/`, `tests/`, and `docs/walkthroughs/`.
-    - Participant execution surface design: attacker host, browser terminal, seeded foothold, VPN/jump access, or equivalent.
-    - Live-build isolation design: dedicated VPC/subnets or equivalent isolation, no default-VPC golden range, and no private-DNS endpoints in shared VPCs.
+    - Participant execution surface design: attacker host, browser terminal, seeded foothold, VPN/jump access, or
+      equivalent.
+    - Live-build isolation design: dedicated VPC/subnets or equivalent isolation, no default-VPC golden range, and no
+      private-DNS endpoints in shared VPCs.
 
     ## Acceptance Criteria
     - Every referenced component has a real implementation plan.
     - Local/minimal profiles are marked as degraded aids and cannot replace the golden build.
-    - The design shows how the golden build creates participant start state without hidden manual setup or required repo-root `.env`.
+    - The design shows how the golden build creates participant start state without hidden manual setup or required
+      repo-root `.env`.
 
     {child_issue_note()}
     """)
@@ -184,14 +194,17 @@ def oracle_body(plan: PackPlan) -> str:
     ## Deliverables
     - Hidden canonical path from participant start state through the scenario objective.
     - Accepted alternates, prerequisites, failure states, negative gates, and objective success states.
-    - Affordance ledger mapping clues, credentials, tools, planted artifacts, privileges, routes, services, and data to concrete `sdl/` and `assets/` references.
+    - Affordance ledger mapping clues, credentials, tools, planted artifacts, privileges, routes, services, and data to
+      concrete `sdl/` and `assets/` references.
     - Pack-local oracle/scoring/telemetry ledgers and validators.
     - Explicit separation between hidden oracle material and participant-facing content.
 
     ## Acceptance Criteria
     - Every success state is reachable from the intended participant privilege context.
-    - Negative gates prove objectives, flags, and proof artifacts are not trivially reachable before the intended action or privilege.
-    - Validators fail on missing assets, unresolved path steps, leaked hidden vocabulary, or oracle references that do not map to real topology/content.
+    - Negative gates prove objectives, flags, and proof artifacts are not trivially reachable before the intended action
+      or privilege.
+    - Validators fail on missing assets, unresolved path steps, leaked hidden vocabulary, or oracle references that do
+      not map to real topology/content.
 
     {child_issue_note()}
     """)
@@ -209,7 +222,8 @@ def flag_body(plan: PackPlan) -> str:
     - `flags/placement.yaml` with one entry per flag and stable `flag_id`s.
     - `challenges/challenges.yaml` with participant-facing challenge text keyed by the same `flag_id`s.
     - `ctfd/` reference loader and tests.
-    - Validator coverage reconciling flags to objectives, topology assets, hidden path states, challenges, and CTFd output.
+    - Validator coverage reconciling flags to objectives, topology assets, hidden path states, challenges, and CTFd
+      output.
 
     ## Acceptance Criteria
     - `pack.yaml.contents.flag_layer: true` only when `flags/`, `challenges/`, and `ctfd/` all ship together.
@@ -231,12 +245,16 @@ def profile_body(plan: PackPlan) -> str:
     ## Deliverables
     - `profiles/bundles.yaml` with supported bundle rows and entrypoints.
     - Guided, unguided, purple-team, agent-benchmark, and demo content as applicable.
-    - `profiles/validate_*.py` plus tests for manifest consistency, participant/operator split, leak scanning, and compatibility joins.
-    - Matching `pack.yaml.contents.profile_bundles`, `profile_bundles:` index, and `pack.compatibility.yaml.delivery_bundles` rows.
+    - `profiles/validate_*.py` plus tests for manifest consistency, participant/operator split, leak scanning, and
+      compatibility joins.
+    - Matching `pack.yaml.contents.profile_bundles`, `profile_bundles:` index, and
+      `pack.compatibility.yaml.delivery_bundles` rows.
 
     ## Acceptance Criteria
-    - Selecting a profile changes content exposure only; it does not create a second hidden path or a second golden proof.
-    - Participant files do not disclose oracle ids, ordered hidden-path labels, proof predicates, raw evidence, answers, credentials, flags, or next-step hints.
+    - Selecting a profile changes content exposure only; it does not create a second hidden path or a second golden
+      proof.
+    - Participant files do not disclose oracle ids, ordered hidden-path labels, proof predicates, raw evidence, answers,
+      credentials, flags, or next-step hints.
     - If this pack intentionally has no profile layer, close this issue as not planned only after pack metadata says so.
 
     {child_issue_note()}
@@ -253,15 +271,20 @@ def build_body(plan: PackPlan) -> str:
     {COMMON_ANCHORS}
     ## Deliverables
     - `build/` implementation for the golden runtime profile.
-    - Every referenced host, identity, domain, application, service, share, dataset, route, tool, credential, flag, and objective state created from committed pack source.
+    - Every referenced host, identity, domain, application, service, share, dataset, route, tool, credential, flag, and
+      objective state created from committed pack source.
     - Participant entry surface provisioned by the build.
     - Reset, rebuild, cleanup, teardown, and operator diagnostics.
-    - `pack.compatibility.yaml` runtime profile, lifecycle, platform feature, validation, and artifact-boundary references updated to point at actual build surfaces.
+    - `pack.compatibility.yaml` runtime profile, lifecycle, platform feature, validation, and artifact-boundary
+      references updated to point at actual build surfaces.
 
     ## Acceptance Criteria
-    - A clean checkout can apply the golden build using committed pack content plus approved cloud/operator credentials only.
-    - The build enters participant start state without hidden manual setup, rehearsal-only seeding, generated-password shortcuts, or operator-only management-plane actions.
-    - The scenario may move to `built` only when it stands up; it remains short of `golden` until participant-equivalent proof and evidence complete.
+    - A clean checkout can apply the golden build using committed pack content plus approved cloud/operator credentials
+      only.
+    - The build enters participant start state without hidden manual setup, rehearsal-only seeding, generated-password
+      shortcuts, or operator-only management-plane actions.
+    - The scenario may move to `built` only when it stands up; it remains short of `golden` until participant-equivalent
+      proof and evidence complete.
 
     {child_issue_note()}
     """)
@@ -277,14 +300,17 @@ def rehearsal_body(plan: PackPlan) -> str:
     {COMMON_ANCHORS}
     ## Deliverables
     - `tests/` or build-local rehearsal tooling targeting the same declared golden runtime profile as the build issue.
-    - Automated checks for setup health, participant start state, objectives/oracle states, flags when present, negative gates, reset/persistence behavior, and cleanup.
+    - Automated checks for setup health, participant start state, objectives/oracle states, flags when present, negative
+      gates, reset/persistence behavior, and cleanup.
     - Durable rehearsal report committed under `docs/`.
-    - Walkthrough alignment checks or explicit trace showing that automated steps and future human walkthroughs cover the same path.
+    - Walkthrough alignment checks or explicit trace showing that automated steps and future human walkthroughs cover
+      the same path.
 
     ## Acceptance Criteria
     - Rehearsal runs against the live golden build profile, not an abstraction or degraded local-only shortcut.
     - Operator transports are used only for provisioning, observation, diagnostics, reset, or teardown.
-    - The rehearsal does not inject secrets, flags, users, data, or services that the golden build should have placed in-world.
+    - The rehearsal does not inject secrets, flags, users, data, or services that the golden build should have placed
+      in-world.
 
     {child_issue_note()}
     """)
@@ -303,12 +329,15 @@ def manual_body(plan: PackPlan) -> str:
     - Enter only through the participant execution surface.
     - Work the intended happy path manually, command by command, from the intended participant privilege context.
     - Record commands, expected output, objective/flag proof, defects, fixes, reruns, and remaining limitations.
-    - After the manual path works, run automated rehearsal, run static/unit checks, tear down the range, and verify cleanup.
+    - After the manual path works, run automated rehearsal, run static/unit checks, tear down the range, and verify
+      cleanup.
 
     ## Acceptance Criteria
-    - No SSM, cloud console, Terraform output, generated password, root/SYSTEM shell, database console, or test harness shortcut is used as proof of participant completion.
+    - No SSM, cloud console, Terraform output, generated password, root/SYSTEM shell, database console, or test harness
+      shortcut is used as proof of participant completion.
     - Every required objective, oracle state, flag, and success condition is reached from the intended participant role.
-    - The copied golden-readiness checklist identifies exactly what was manually proven, what was automated, and what remains out of scope.
+    - The copied golden-readiness checklist identifies exactly what was manually proven, what was automated, and what
+      remains out of scope.
 
     {child_issue_note()}
     """)
@@ -324,15 +353,20 @@ def final_body(plan: PackPlan) -> str:
     {COMMON_ANCHORS}
     ## Deliverables
     - Update `pack.yaml` status and `contents` only to match proven reality.
-    - Update `pack.compatibility.yaml` runtime profiles, delivery bundles, artifact boundaries, scoring/oracle/telemetry references, lifecycle hooks, operator surfaces, and validation gates.
-    - Reconcile README, concepts, attack path, lineage, walkthroughs, golden-readiness checklist, provenance review gates, and evidence reports.
-    - Remove stale TODOs, old emulation-plan-only language, misleading local-only claims, and references to superseded issues.
+    - Update `pack.compatibility.yaml` runtime profiles, delivery bundles, artifact boundaries, scoring/oracle/telemetry
+      references, lifecycle hooks, operator surfaces, and validation gates.
+    - Reconcile README, concepts, attack path, lineage, walkthroughs, golden-readiness checklist, provenance review
+      gates, and evidence reports.
+    - Remove stale TODOs, old emulation-plan-only language, misleading local-only claims, and references to superseded
+      issues.
     - Run static content gates and pack release checks when artifact boundaries exist.
     - Verify teardown evidence and ensure no live range resources remain.
 
     ## Acceptance Criteria
-    - Build, tests, walkthroughs, oracle, flags, profiles, compatibility metadata, and provenance agree path-for-path and boundary-for-boundary.
-    - Participant-visible exports are leak-scanned and do not include hidden oracle vocabulary, answers, proof predicates, or operator-only material.
+    - Build, tests, walkthroughs, oracle, flags, profiles, compatibility metadata, and provenance agree path-for-path
+      and boundary-for-boundary.
+    - Participant-visible exports are leak-scanned and do not include hidden oracle vocabulary, answers, proof
+      predicates, or operator-only material.
     - Close this umbrella only after final evidence reconciliation is complete.
 
     {child_issue_note()}

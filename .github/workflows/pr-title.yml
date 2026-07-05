@@ -1,0 +1,30 @@
+name: PR Title
+
+# Enforce Conventional Commit PR titles (ADR 0006). Feature PRs are squash-merged,
+# so the PR title becomes the single commit on the branch — this is what feeds the
+# version + release decision python-semantic-release makes on main. A PR whose
+# title is not a valid conventional type cannot merge (make this a required check
+# on dev and main), so the release contract can't be bypassed or forgotten.
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+    branches:
+      - dev
+      - main
+
+permissions:
+  pull-requests: read
+
+jobs:
+  conventional-title:
+    name: Conventional PR title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

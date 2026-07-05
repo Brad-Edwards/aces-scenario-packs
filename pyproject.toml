@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
@@ -28,8 +28,13 @@ aces-pack-release = "aces_scenario_packs.release:main"
 aces-new-pack = "aces_scenario_packs.new_pack:main"
 aces-pack-issue-skeleton = "aces_scenario_packs.issue_skeleton:main"
 
+# Version is derived from the git tag (the release tag python-semantic-release
+# creates). The tag is the single source of truth; nothing is hand-bumped.
 [tool.hatch.version]
-path = "src/aces_scenario_packs/__init__.py"
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/aces_scenario_packs/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/aces_scenario_packs"]
@@ -41,6 +46,18 @@ include = [
     "/tests",
     "/README.md",
     "/LICENSE",
-    "/CHANGELOG.md",
-    "/changelog.d",
 ]
+
+# Release automation: python-semantic-release computes the next version from
+# Conventional Commit messages and creates the git tag. Tag-only (no commit is
+# pushed back to the protected main branch); the changelog is emitted to the
+# GitHub Release. See docs/decisions/adrs/0006-conventional-commit-releases.md.
+[tool.semantic_release]
+tag_format = "v{version}"
+commit = false
+allow_zero_version = true
+major_on_zero = false
+build_command = "python -m pip install build && python -m build"
+
+[tool.semantic_release.branches.main]
+match = "main"

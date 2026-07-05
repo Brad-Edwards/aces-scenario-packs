@@ -24,3 +24,13 @@ aces-pack-validate --repo .
 aces-pack-release check --all
 python3 -m compileall src tests
 ```
+
+## Commits & releases
+
+- PR titles MUST be Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`,
+  `refactor:`, `test:`, `ci:`, `build:`); a required CI check enforces it.
+- The type is the release decision: `feat:`→minor, `fix:`→patch,
+  `feat!:`/`BREAKING CHANGE:`→major; docs/chore/test/ci/refactor/build don't
+  release. Never hand-edit a version — the git tag is the source of truth.
+- Squash-merge feature PRs into `dev`; promote `dev`→`main` with a merge/rebase.
+  See `docs/decisions/adrs/0006-conventional-commit-releases.md`.

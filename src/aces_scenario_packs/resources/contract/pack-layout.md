@@ -169,7 +169,7 @@ predicates, and reset internals.
 
 **Required.** Every pack ships a machine-readable provenance ledger and
 references it from `pack.yaml` (`provenance_ledger: docs/provenance-ledger.yaml`);
-[`scenario_content_ci.py`](../scripts/ci/scenario_content_ci.py) enforces its
+the `aces-pack-validate` gate enforces its
 presence and validates it against
 [`provenance.schema.yaml`](provenance.schema.yaml). It is the source of truth for
 **where content came from, what may be done with it, whether it is safe to ship,
@@ -216,7 +216,7 @@ includes customer-specific material.
 
 Reusable oracle authoring guidance and fixture validation live in
 [`_oracle/`](_oracle/). This directory is shared operator/oracle-only source,
-not a scenario pack, and `scripts/ci/scenario_content_ci.py` validates it through
+not a scenario pack, and `aces-pack-validate` validates it through
 a dedicated shared-oracle gate.
 
 Pack-local files remain the source of truth for a scenario's hidden path and
@@ -523,10 +523,10 @@ referenced from the entry; the YAML index stays the canonical list.
 ## Build, release & versioning
 
 A pack is packaged for release by the repo-wide, **static and read-only** gate
-[`scripts/ci/pack_release.py`](../scripts/ci/pack_release.py). It derives release
+the `aces-pack-release` gate. It derives release
 views from the contracts above — it never stands up a range, calls a cloud/CTFd/
 Terraform/Docker API, mutates state, or uploads. It runs in or behind the
-existing [scenario-content gate](../scripts/ci/scenario_content_ci.py); a pack is
+existing scenario-content gate (`aces-pack-validate`); a pack is
 **releasable** when it ships a `pack.compatibility.yaml` with
 `artifact_boundaries`. `polaris/` and packs without a compatibility manifest are
 explicit skips, never a silent partial release.
@@ -565,9 +565,9 @@ explicit skips, never a silent partial release.
 Run it locally exactly as CI does:
 
 ```
-python3 scripts/ci/pack_release.py check --all          # lint + smoke + build-to-tempdir
-python3 scripts/ci/pack_release.py build --pack apt29 --out dist/
-python3 scripts/ci/pack_release.py metadata --pack apt29
+aces-pack-release check --all          # lint + smoke + build-to-tempdir
+aces-pack-release build --pack <pack> --out dist/
+aces-pack-release metadata --pack <pack>
 ```
 
 ## Explicitly not in scope

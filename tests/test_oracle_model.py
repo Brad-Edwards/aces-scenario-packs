@@ -10,19 +10,23 @@ from __future__ import annotations
 import copy
 import importlib.util
 import os
+import sys
 import unittest
 
 import yaml
 
-_ORACLE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_MODEL_PATH = os.path.join(_ORACLE_DIR, "oracle_model.py")
-_FIXTURE_DIR = os.path.join(_ORACLE_DIR, "fixtures")
+_PKG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    "src", "aces_scenario_packs")
+_MODEL_PATH = os.path.join(_PKG, "oracle_model.py")
+_FIXTURE_DIR = os.path.join(_PKG, "resources", "oracle", "fixtures")
 
 
 def _load_model_module():
     spec = importlib.util.spec_from_file_location("oracle_model_undertest", _MODEL_PATH)
     mod = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
+    # Register before exec so dataclass annotation resolution can find the module.
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

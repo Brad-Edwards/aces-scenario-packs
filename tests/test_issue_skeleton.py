@@ -8,8 +8,8 @@ import sys
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_SCRIPT = os.path.join(os.path.dirname(os.path.dirname(_HERE)),
-                       "create_scenario_pack_issue_skeleton.py")
+_SCRIPT = os.path.join(os.path.dirname(_HERE), "src", "aces_scenario_packs",
+                       "issue_skeleton.py")
 
 
 def _load_module():

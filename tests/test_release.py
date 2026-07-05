@@ -29,9 +29,8 @@ import unittest
 import yaml
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_PR_PATH = os.path.join(os.path.dirname(_HERE), "pack_release.py")
-# _HERE = scripts/ci/tests -> repo root is three levels up.
-_REPO = os.path.dirname(os.path.dirname(os.path.dirname(_HERE)))
+_REPO = os.path.dirname(_HERE)  # tests/ sits at the repo root
+_PR_PATH = os.path.join(_REPO, "src", "aces_scenario_packs", "release.py")
 
 
 def _load_module():
@@ -124,7 +123,7 @@ def _make_pack(root: str, *, delivery_bundles, profile_bundles=False,
 # --------------------------------------------------------------------------
 class ContractVersionTests(unittest.TestCase):
     def test_reads_version_and_digest_from_readme(self):
-        version, digest = PR.load_contract_version(_REPO)
+        version, digest = PR.load_contract_version()
         self.assertEqual(version, "1")
         self.assertTrue(digest.startswith("sha256:"))
         self.assertEqual(len(digest), len("sha256:") + 64)

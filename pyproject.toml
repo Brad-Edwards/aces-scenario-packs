@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aces-scenario-packs"
+version = "0.1.0"
+description = "ACES scenario-pack definition, schemas, template, and authoring/validation tooling."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Brad Edwards" }]
+keywords = ["aces", "scenario-pack", "cyber-range", "security"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Security",
+]
+dependencies = ["PyYAML>=6"]
+
+[project.urls]
+Homepage = "https://github.com/Brad-Edwards/aces-scenario-packs"
+Repository = "https://github.com/Brad-Edwards/aces-scenario-packs"
+
+[project.scripts]
+aces-pack-validate = "aces_scenario_packs.content_ci:main"
+aces-pack-release = "aces_scenario_packs.release:main"
+aces-new-pack = "aces_scenario_packs.new_pack:main"
+aces-pack-issue-skeleton = "aces_scenario_packs.issue_skeleton:main"
+
+[tool.hatch.version]
+path = "src/aces_scenario_packs/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aces_scenario_packs"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src/aces_scenario_packs",
+    "/docs",
+    "/tests",
+    "/README.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+    "/changelog.d",
+]

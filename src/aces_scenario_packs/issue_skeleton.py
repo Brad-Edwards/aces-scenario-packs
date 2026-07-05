@@ -15,7 +15,7 @@ import subprocess
 import sys
 import textwrap
 from dataclasses import dataclass
-from typing import Any, Callable
+from collections.abc import Callable
 
 DEFAULT_REPO = "Brad-Edwards/aces-scenario-packs"
 PACK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
@@ -31,7 +31,8 @@ LABEL_TIER_ACES = "tier:aces"
 
 
 @dataclass(frozen=True)
-class PackPlan:
+class PackPlan(object):
+    """PackPlan."""
     pack_id: str
     title: str
     focus: str
@@ -42,7 +43,8 @@ class PackPlan:
 
 
 @dataclass(frozen=True)
-class IssueTemplate:
+class IssueTemplate(object):
+    """IssueTemplate."""
     key: str
     suffix: str
     labels: tuple[str, ...]
@@ -50,7 +52,8 @@ class IssueTemplate:
 
 
 @dataclass(frozen=True)
-class Operation:
+class Operation(object):
+    """Operation."""
     action: str
     title: str
     body: str | None = None
@@ -63,13 +66,17 @@ class Operation:
 COMMON_ANCHORS = """\
 ## Contract Anchors
 - `scenarios/README.md`: authoritative scenario-pack convention and milestone structure.
-- `scenarios/_template/README.md`: build doctrine - offensive by default, one full scenario per pack, no stubs or hand-waved services, and `golden` only after participant-equivalent proof.
-- `docs/scenario-packs.md`: pack metadata, provenance ledger, compatibility manifest, profile bundles, validation oracle, and release boundaries.
-- `docs/golden-readiness.md`: isolated golden infrastructure, automated rehearsal, final manual participant walkthrough, and teardown proof.
+- `scenarios/_template/README.md`: build doctrine - offensive by default, one full scenario per pack, no stubs or
+  hand-waved services, and `golden` only after participant-equivalent proof.
+- `docs/scenario-packs.md`: pack metadata, provenance ledger, compatibility manifest, profile bundles, validation
+  oracle, and release boundaries.
+- `docs/golden-readiness.md`: isolated golden infrastructure, automated rehearsal, final manual participant walkthrough,
+  and teardown proof.
 """
 
 
 def clean(body: str) -> str:
+    """Clean."""
     body = textwrap.dedent(body).strip()
     lines = [line[4:] if line.startswith("    ") else line
              for line in body.splitlines()]
@@ -77,10 +84,12 @@ def clean(body: str) -> str:
 
 
 def title_from_pack_id(pack_id: str) -> str:
+    """Title from pack id."""
     return " ".join(part.capitalize() for part in pack_id.split("-"))
 
 
 def validate_pack_id(pack_id: str) -> None:
+    """Validate pack id."""
     if not PACK_ID_RE.fullmatch(pack_id):
         raise SystemExit(
             "pack id must be lowercase kebab-case, start/end with a letter or "
@@ -88,12 +97,14 @@ def validate_pack_id(pack_id: str) -> None:
 
 
 def bullets(lines: tuple[str, ...]) -> str:
+    """Bullets."""
     if not lines:
         return "- Source log TBD by the pack-design agent."
     return "\n".join(f"- {line}" for line in lines)
 
 
 def pack_block(plan: PackPlan) -> str:
+    """Pack block."""
     return clean(f"""\
     ## Pack
     - Pack id: `{plan.pack_id}`
@@ -107,6 +118,7 @@ def pack_block(plan: PackPlan) -> str:
 
 
 def child_issue_note() -> str:
+    """Child issue note."""
     return clean("""\
     ## Child Issue Guidance
     This is a skeleton planning issue. The pack-design agent should edit this
@@ -117,6 +129,7 @@ def child_issue_note() -> str:
 
 
 def contract_body(plan: PackPlan) -> str:
+    """Contract body."""
     return clean(f"""\
     ## Goal
     Create the `{plan.pack_id}` scenario contract and pack skeleton under the current pack doctrine.
@@ -124,14 +137,16 @@ def contract_body(plan: PackPlan) -> str:
     {pack_block(plan)}
     {COMMON_ANCHORS}
     ## Deliverables
-    - Create or link the real Ground Control DRAFT scenario requirement before stamping `pack.yaml.requirement`; do not synthesize a UID.
-    - Scaffold `scenarios/{plan.pack_id}/` from `scenarios/_template/` with `scripts/new_scenario_pack.py`.
+    - Create or link the real Ground Control DRAFT scenario requirement before stamping `pack.yaml.requirement`; do not
+      synthesize a UID.
+    - Scaffold `scenarios/{plan.pack_id}/` from `scenarios/_template/` with `aces-new-pack`.
     - Fill `pack.yaml`, `pack.compatibility.yaml`, and `docs/provenance-ledger.yaml` with truthful initial metadata.
     - Replace template prose in `README.md`, `docs/concepts.md`, `docs/attack-path.md`, and `docs/lineage.md`.
     - Record source adaptation decisions: what is used, excluded, changed, or locally designed.
 
     ## Acceptance Criteria
-    - The pack has the required minimum source shape: `pack.yaml`, `sdl/`, `docs/concepts.md`, `docs/attack-path.md`, and `docs/provenance-ledger.yaml`.
+    - The pack has the required minimum source shape: `pack.yaml`, `sdl/`, `docs/concepts.md`, `docs/attack-path.md`,
+      and `docs/provenance-ledger.yaml`.
     - Participant-facing framing is offensive by default unless the pack and briefing explicitly declare otherwise.
     - `pack.yaml.status` remains `draft` until a real live build exists.
 
@@ -140,6 +155,7 @@ def contract_body(plan: PackPlan) -> str:
 
 
 def topology_body(plan: PackPlan) -> str:
+    """Topology body."""
     return clean(f"""\
     ## Goal
     Define the real topology, assets, participant surface, and reference-triangle design for `{plan.pack_id}`.
@@ -147,22 +163,28 @@ def topology_body(plan: PackPlan) -> str:
     {pack_block(plan)}
     {COMMON_ANCHORS}
     ## Deliverables
-    - `sdl/` start-state model naming every required host, identity, domain, application, service, share, dataset, route, credential, tool, dependency, and objective state.
-    - `assets/` content for planted artifacts, briefing material, synthetic credentials, target data, and custom service/container source.
+    - `sdl/` start-state model naming every required host, identity, domain, application, service, share, dataset,
+      route, credential, tool, dependency, and objective state.
+    - `assets/` content for planted artifacts, briefing material, synthetic credentials, target data, and custom
+      service/container source.
     - Reference-triangle design mapping the same path into `build/`, `tests/`, and `docs/walkthroughs/`.
-    - Participant execution surface design: attacker host, browser terminal, seeded foothold, VPN/jump access, or equivalent.
-    - Live-build isolation design: dedicated VPC/subnets or equivalent isolation, no default-VPC golden range, and no private-DNS endpoints in shared VPCs.
+    - Participant execution surface design: attacker host, browser terminal, seeded foothold, VPN/jump access, or
+      equivalent.
+    - Live-build isolation design: dedicated VPC/subnets or equivalent isolation, no default-VPC golden range, and no
+      private-DNS endpoints in shared VPCs.
 
     ## Acceptance Criteria
     - Every referenced component has a real implementation plan.
     - Local/minimal profiles are marked as degraded aids and cannot replace the golden build.
-    - The design shows how the golden build creates participant start state without hidden manual setup or required repo-root `.env`.
+    - The design shows how the golden build creates participant start state without hidden manual setup or required
+      repo-root `.env`.
 
     {child_issue_note()}
     """)
 
 
 def oracle_body(plan: PackPlan) -> str:
+    """Oracle body."""
     return clean(f"""\
     ## Goal
     Define the hidden path, affordance ledger, objective oracle, and validation model for `{plan.pack_id}`.
@@ -172,20 +194,24 @@ def oracle_body(plan: PackPlan) -> str:
     ## Deliverables
     - Hidden canonical path from participant start state through the scenario objective.
     - Accepted alternates, prerequisites, failure states, negative gates, and objective success states.
-    - Affordance ledger mapping clues, credentials, tools, planted artifacts, privileges, routes, services, and data to concrete `sdl/` and `assets/` references.
+    - Affordance ledger mapping clues, credentials, tools, planted artifacts, privileges, routes, services, and data to
+      concrete `sdl/` and `assets/` references.
     - Pack-local oracle/scoring/telemetry ledgers and validators.
     - Explicit separation between hidden oracle material and participant-facing content.
 
     ## Acceptance Criteria
     - Every success state is reachable from the intended participant privilege context.
-    - Negative gates prove objectives, flags, and proof artifacts are not trivially reachable before the intended action or privilege.
-    - Validators fail on missing assets, unresolved path steps, leaked hidden vocabulary, or oracle references that do not map to real topology/content.
+    - Negative gates prove objectives, flags, and proof artifacts are not trivially reachable before the intended action
+      or privilege.
+    - Validators fail on missing assets, unresolved path steps, leaked hidden vocabulary, or oracle references that do
+      not map to real topology/content.
 
     {child_issue_note()}
     """)
 
 
 def flag_body(plan: PackPlan) -> str:
+    """Flag body."""
     return clean(f"""\
     ## Goal
     Add the all-or-nothing flag, challenge, and reference CTFd layer for `{plan.pack_id}` when the scenario has scoring.
@@ -196,7 +222,8 @@ def flag_body(plan: PackPlan) -> str:
     - `flags/placement.yaml` with one entry per flag and stable `flag_id`s.
     - `challenges/challenges.yaml` with participant-facing challenge text keyed by the same `flag_id`s.
     - `ctfd/` reference loader and tests.
-    - Validator coverage reconciling flags to objectives, topology assets, hidden path states, challenges, and CTFd output.
+    - Validator coverage reconciling flags to objectives, topology assets, hidden path states, challenges, and CTFd
+      output.
 
     ## Acceptance Criteria
     - `pack.yaml.contents.flag_layer: true` only when `flags/`, `challenges/`, and `ctfd/` all ship together.
@@ -208,6 +235,7 @@ def flag_body(plan: PackPlan) -> str:
 
 
 def profile_body(plan: PackPlan) -> str:
+    """Profile body."""
     return clean(f"""\
     ## Goal
     Add delivery/audience profile bundles for `{plan.pack_id}` when the pack has multiple audiences.
@@ -217,12 +245,16 @@ def profile_body(plan: PackPlan) -> str:
     ## Deliverables
     - `profiles/bundles.yaml` with supported bundle rows and entrypoints.
     - Guided, unguided, purple-team, agent-benchmark, and demo content as applicable.
-    - `profiles/validate_*.py` plus tests for manifest consistency, participant/operator split, leak scanning, and compatibility joins.
-    - Matching `pack.yaml.contents.profile_bundles`, `profile_bundles:` index, and `pack.compatibility.yaml.delivery_bundles` rows.
+    - `profiles/validate_*.py` plus tests for manifest consistency, participant/operator split, leak scanning, and
+      compatibility joins.
+    - Matching `pack.yaml.contents.profile_bundles`, `profile_bundles:` index, and
+      `pack.compatibility.yaml.delivery_bundles` rows.
 
     ## Acceptance Criteria
-    - Selecting a profile changes content exposure only; it does not create a second hidden path or a second golden proof.
-    - Participant files do not disclose oracle ids, ordered hidden-path labels, proof predicates, raw evidence, answers, credentials, flags, or next-step hints.
+    - Selecting a profile changes content exposure only; it does not create a second hidden path or a second golden
+      proof.
+    - Participant files do not disclose oracle ids, ordered hidden-path labels, proof predicates, raw evidence, answers,
+      credentials, flags, or next-step hints.
     - If this pack intentionally has no profile layer, close this issue as not planned only after pack metadata says so.
 
     {child_issue_note()}
@@ -230,6 +262,7 @@ def profile_body(plan: PackPlan) -> str:
 
 
 def build_body(plan: PackPlan) -> str:
+    """Build body."""
     return clean(f"""\
     ## Goal
     Implement the `{plan.pack_id}` golden build in the declared live infrastructure.
@@ -238,21 +271,27 @@ def build_body(plan: PackPlan) -> str:
     {COMMON_ANCHORS}
     ## Deliverables
     - `build/` implementation for the golden runtime profile.
-    - Every referenced host, identity, domain, application, service, share, dataset, route, tool, credential, flag, and objective state created from committed pack source.
+    - Every referenced host, identity, domain, application, service, share, dataset, route, tool, credential, flag, and
+      objective state created from committed pack source.
     - Participant entry surface provisioned by the build.
     - Reset, rebuild, cleanup, teardown, and operator diagnostics.
-    - `pack.compatibility.yaml` runtime profile, lifecycle, platform feature, validation, and artifact-boundary references updated to point at actual build surfaces.
+    - `pack.compatibility.yaml` runtime profile, lifecycle, platform feature, validation, and artifact-boundary
+      references updated to point at actual build surfaces.
 
     ## Acceptance Criteria
-    - A clean checkout can apply the golden build using committed pack content plus approved cloud/operator credentials only.
-    - The build enters participant start state without hidden manual setup, rehearsal-only seeding, generated-password shortcuts, or operator-only management-plane actions.
-    - The scenario may move to `built` only when it stands up; it remains short of `golden` until participant-equivalent proof and evidence complete.
+    - A clean checkout can apply the golden build using committed pack content plus approved cloud/operator credentials
+      only.
+    - The build enters participant start state without hidden manual setup, rehearsal-only seeding, generated-password
+      shortcuts, or operator-only management-plane actions.
+    - The scenario may move to `built` only when it stands up; it remains short of `golden` until participant-equivalent
+      proof and evidence complete.
 
     {child_issue_note()}
     """)
 
 
 def rehearsal_body(plan: PackPlan) -> str:
+    """Rehearsal body."""
     return clean(f"""\
     ## Goal
     Add automated live rehearsal for the `{plan.pack_id}` golden build.
@@ -261,20 +300,24 @@ def rehearsal_body(plan: PackPlan) -> str:
     {COMMON_ANCHORS}
     ## Deliverables
     - `tests/` or build-local rehearsal tooling targeting the same declared golden runtime profile as the build issue.
-    - Automated checks for setup health, participant start state, objectives/oracle states, flags when present, negative gates, reset/persistence behavior, and cleanup.
+    - Automated checks for setup health, participant start state, objectives/oracle states, flags when present, negative
+      gates, reset/persistence behavior, and cleanup.
     - Durable rehearsal report committed under `docs/`.
-    - Walkthrough alignment checks or explicit trace showing that automated steps and future human walkthroughs cover the same path.
+    - Walkthrough alignment checks or explicit trace showing that automated steps and future human walkthroughs cover
+      the same path.
 
     ## Acceptance Criteria
     - Rehearsal runs against the live golden build profile, not an abstraction or degraded local-only shortcut.
     - Operator transports are used only for provisioning, observation, diagnostics, reset, or teardown.
-    - The rehearsal does not inject secrets, flags, users, data, or services that the golden build should have placed in-world.
+    - The rehearsal does not inject secrets, flags, users, data, or services that the golden build should have placed
+      in-world.
 
     {child_issue_note()}
     """)
 
 
 def manual_body(plan: PackPlan) -> str:
+    """Manual body."""
     return clean(f"""\
     ## Goal
     Run the final manual participant walkthrough for `{plan.pack_id}` as its own golden-readiness slice.
@@ -286,18 +329,22 @@ def manual_body(plan: PackPlan) -> str:
     - Enter only through the participant execution surface.
     - Work the intended happy path manually, command by command, from the intended participant privilege context.
     - Record commands, expected output, objective/flag proof, defects, fixes, reruns, and remaining limitations.
-    - After the manual path works, run automated rehearsal, run static/unit checks, tear down the range, and verify cleanup.
+    - After the manual path works, run automated rehearsal, run static/unit checks, tear down the range, and verify
+      cleanup.
 
     ## Acceptance Criteria
-    - No SSM, cloud console, Terraform output, generated password, root/SYSTEM shell, database console, or test harness shortcut is used as proof of participant completion.
+    - No SSM, cloud console, Terraform output, generated password, root/SYSTEM shell, database console, or test harness
+      shortcut is used as proof of participant completion.
     - Every required objective, oracle state, flag, and success condition is reached from the intended participant role.
-    - The copied golden-readiness checklist identifies exactly what was manually proven, what was automated, and what remains out of scope.
+    - The copied golden-readiness checklist identifies exactly what was manually proven, what was automated, and what
+      remains out of scope.
 
     {child_issue_note()}
     """)
 
 
 def final_body(plan: PackPlan) -> str:
+    """Final body."""
     return clean(f"""\
     ## Goal
     Reconcile final docs, status, evidence, release metadata, and teardown state for `{plan.pack_id}`.
@@ -306,15 +353,20 @@ def final_body(plan: PackPlan) -> str:
     {COMMON_ANCHORS}
     ## Deliverables
     - Update `pack.yaml` status and `contents` only to match proven reality.
-    - Update `pack.compatibility.yaml` runtime profiles, delivery bundles, artifact boundaries, scoring/oracle/telemetry references, lifecycle hooks, operator surfaces, and validation gates.
-    - Reconcile README, concepts, attack path, lineage, walkthroughs, golden-readiness checklist, provenance review gates, and evidence reports.
-    - Remove stale TODOs, old emulation-plan-only language, misleading local-only claims, and references to superseded issues.
+    - Update `pack.compatibility.yaml` runtime profiles, delivery bundles, artifact boundaries, scoring/oracle/telemetry
+      references, lifecycle hooks, operator surfaces, and validation gates.
+    - Reconcile README, concepts, attack path, lineage, walkthroughs, golden-readiness checklist, provenance review
+      gates, and evidence reports.
+    - Remove stale TODOs, old emulation-plan-only language, misleading local-only claims, and references to superseded
+      issues.
     - Run static content gates and pack release checks when artifact boundaries exist.
     - Verify teardown evidence and ensure no live range resources remain.
 
     ## Acceptance Criteria
-    - Build, tests, walkthroughs, oracle, flags, profiles, compatibility metadata, and provenance agree path-for-path and boundary-for-boundary.
-    - Participant-visible exports are leak-scanned and do not include hidden oracle vocabulary, answers, proof predicates, or operator-only material.
+    - Build, tests, walkthroughs, oracle, flags, profiles, compatibility metadata, and provenance agree path-for-path
+      and boundary-for-boundary.
+    - Participant-visible exports are leak-scanned and do not include hidden oracle vocabulary, answers, proof
+      predicates, or operator-only material.
     - Close this umbrella only after final evidence reconciliation is complete.
 
     {child_issue_note()}
@@ -433,23 +485,27 @@ ISSUE_TEMPLATES = (
 
 
 def issue_title(plan: PackPlan, template: IssueTemplate) -> str:
+    """Issue title."""
     return f"{plan.pack_id}: {template.suffix}"
 
 
 def milestone_title(plan: PackPlan) -> str:
+    """Milestone title."""
     return plan.milestone_title or f"Scenario pack: {plan.title}"
 
 
 def wanted_labels(plan: PackPlan, template: IssueTemplate,
                   available_labels: set[str] | None = None) -> tuple[str, ...]:
+    """Wanted labels."""
     labels = set(template.labels).union(plan.labels)
     if available_labels is not None:
         labels = {label for label in labels if label in available_labels}
     return tuple(sorted(labels))
 
 
-def matching_issue(existing_issues: list[dict[str, Any]], title: str,
-                   milestone_number: int | None) -> dict[str, Any] | None:
+def matching_issue(existing_issues: list[dict[str, object]], title: str,
+                   milestone_number: int | None) -> dict[str, object] | None:
+    """Matching issue."""
     for issue in existing_issues:
         issue_milestone = (issue.get("milestone") or {}).get("number")
         if issue["title"] == title and (
@@ -458,10 +514,11 @@ def matching_issue(existing_issues: list[dict[str, Any]], title: str,
     return None
 
 
-def build_operations(plan: PackPlan, existing_issues: list[dict[str, Any]],
+def build_operations(plan: PackPlan, existing_issues: list[dict[str, object]],
                      *, available_labels: set[str] | None = None,
                      refresh_existing: bool = False,
                      milestone_exists: bool = True) -> list[Operation]:
+    """Build operations."""
     operations: list[Operation] = []
     if not milestone_exists:
         operations.append(Operation(
@@ -502,11 +559,15 @@ def build_operations(plan: PackPlan, existing_issues: list[dict[str, Any]],
     return operations
 
 
-class GhClient:
+class GhClient(object):
+    """GhClient."""
     def __init__(self, repo: str) -> None:
+        """Initialize the instance."""
         self.repo = repo
 
-    def run(self, args: list[str], payload: dict[str, Any] | None = None) -> Any:
+    @staticmethod
+    def run(args: list[str], payload: dict[str, object] | None = None) -> object:
+        """Run."""
         cmd = ["gh", *args]
         input_text = json.dumps(payload) if payload is not None else None
         if payload is not None:
@@ -520,6 +581,7 @@ class GhClient:
         return None
 
     def list_labels(self) -> set[str]:
+        """List labels."""
         proc = subprocess.run(
             ["gh", "label", "list", "--repo", self.repo, "--limit", "500",
              "--json", "name"],
@@ -531,7 +593,8 @@ class GhClient:
             raise SystemExit(proc.stderr.strip() or proc.stdout.strip())
         return {row["name"] for row in json.loads(proc.stdout)}
 
-    def list_issues(self) -> list[dict[str, Any]]:
+    def list_issues(self) -> list[dict[str, object]]:
+        """List issues."""
         proc = subprocess.run(
             ["gh", "issue", "list", "--repo", self.repo, "--state", "all",
              "--limit", "2000", "--json", "number,title,milestone,labels"],
@@ -543,15 +606,20 @@ class GhClient:
             raise SystemExit(proc.stderr.strip() or proc.stdout.strip())
         return json.loads(proc.stdout)
 
-    def list_milestones(self) -> list[dict[str, Any]]:
+    def list_milestones(self) -> list[dict[str, object]]:
+        """List milestones."""
         return self.run(["api", f"repos/{self.repo}/milestones", "--paginate"]) or []
 
     def create_milestone(self, title: str) -> int:
+        """Create milestone."""
         row = self.run(["api", "--method", "POST",
                         f"repos/{self.repo}/milestones"], {"title": title})
+        if not isinstance(row, dict):
+            raise SystemExit(f"unexpected milestone response for {title!r}")
         return int(row["number"])
 
     def create_issue(self, operation: Operation, milestone_number: int) -> None:
+        """Create issue."""
         self.run(["api", "--method", "POST", f"repos/{self.repo}/issues"], {
             "title": operation.title,
             "body": operation.body,
@@ -560,6 +628,7 @@ class GhClient:
         })
 
     def update_issue(self, operation: Operation, milestone_number: int) -> None:
+        """Update issue."""
         if operation.issue_number is None:
             raise SystemExit("update operation missing issue number")
         self.run(["api", "--method", "PATCH",
@@ -571,7 +640,8 @@ class GhClient:
         })
 
 
-def resolve_milestone_number(plan: PackPlan, milestones: list[dict[str, Any]]) -> tuple[int | None, bool]:
+def resolve_milestone_number(plan: PackPlan, milestones: list[dict[str, object]]) -> tuple[int | None, bool]:
+    """Resolve milestone number."""
     if plan.milestone_number is not None:
         return plan.milestone_number, True
     title = milestone_title(plan)
@@ -582,6 +652,7 @@ def resolve_milestone_number(plan: PackPlan, milestones: list[dict[str, Any]]) -
 
 
 def print_operations(operations: list[Operation]) -> None:
+    """Print operations."""
     for op in operations:
         if op.action == "create_milestone":
             print(f"CREATE milestone: {op.title}")
@@ -595,6 +666,7 @@ def print_operations(operations: list[Operation]) -> None:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """Parse args."""
     parser = argparse.ArgumentParser(
         description="Create standard skeleton GitHub issues for a scenario pack.")
     parser.add_argument("--repo", default=DEFAULT_REPO,
@@ -621,6 +693,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def plan_from_args(args: argparse.Namespace) -> PackPlan:
+    """Plan from args."""
     if not args.pack_id:
         raise SystemExit("--pack-id is required")
     validate_pack_id(args.pack_id)
@@ -639,6 +712,7 @@ def plan_from_args(args: argparse.Namespace) -> PackPlan:
 
 def prepare_operations(args: argparse.Namespace,
                        client: GhClient) -> tuple[list[Operation], int | None]:
+    """Prepare operations."""
     plan = plan_from_args(args)
     milestone_number, milestone_exists = resolve_milestone_number(
         plan, client.list_milestones())
@@ -666,40 +740,46 @@ def prepare_operations(args: argparse.Namespace,
 
 def require_milestone_number(milestone_number: int | None,
                              action: str) -> int:
+    """Require milestone number."""
     if milestone_number is None:
         raise SystemExit(f"cannot {action} issue without a milestone number")
     return milestone_number
 
 
+def _apply_issue_operation(client: GhClient, operation: Operation,
+                           active_milestone: int | None) -> None:
+    """Apply issue operation."""
+    if operation.action == "create_issue":
+        client.create_issue(operation, require_milestone_number(active_milestone, "create"))
+        print(f"created issue: {operation.title}")
+    elif operation.action == "update_issue":
+        client.update_issue(operation, require_milestone_number(active_milestone, "update"))
+        print(f"updated issue #{operation.issue_number}: {operation.title}")
+    elif operation.action == "skip_issue":
+        print(f"skipped issue #{operation.issue_number}: {operation.title}")
+
+
 def apply_operation(client: GhClient, operation: Operation,
                     active_milestone: int | None) -> int | None:
+    """Apply operation."""
     if operation.action == "create_milestone":
         milestone_number = client.create_milestone(operation.title)
         print(f"created milestone {milestone_number}: {operation.title}")
         return milestone_number
-    if operation.action == "create_issue":
-        milestone_number = require_milestone_number(active_milestone, "create")
-        client.create_issue(operation, milestone_number)
-        print(f"created issue: {operation.title}")
-        return active_milestone
-    if operation.action == "update_issue":
-        milestone_number = require_milestone_number(active_milestone, "update")
-        client.update_issue(operation, milestone_number)
-        print(f"updated issue #{operation.issue_number}: {operation.title}")
-        return active_milestone
-    if operation.action == "skip_issue":
-        print(f"skipped issue #{operation.issue_number}: {operation.title}")
+    _apply_issue_operation(client, operation, active_milestone)
     return active_milestone
 
 
 def apply_operations(client: GhClient, operations: list[Operation],
                      milestone_number: int | None) -> None:
+    """Apply operations."""
     active_milestone = milestone_number
     for operation in operations:
         active_milestone = apply_operation(client, operation, active_milestone)
 
 
 def main(argv: list[str] | None = None) -> None:
+    """Command-line entry point."""
     args = parse_args(argv or sys.argv[1:])
     client = GhClient(args.repo)
     operations, milestone_number = prepare_operations(args, client)

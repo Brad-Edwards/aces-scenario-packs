@@ -65,4 +65,4 @@ python3 scripts/create_scenario_pack_issue_skeleton.py \
 
 This script is a GitHub issue setup helper; it does not scaffold files and does
 not run the full Ground Control `/implement` workflow. Use
-`scripts/new_scenario_pack.py` separately for the pack source skeleton.
+`aces-new-pack` separately for the pack source skeleton.

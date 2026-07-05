@@ -24,9 +24,9 @@ import unittest
 import yaml
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_CI_PATH = os.path.join(os.path.dirname(_HERE), "scenario_content_ci.py")
-_SCAFFOLD_PATH = os.path.join(os.path.dirname(os.path.dirname(_HERE)),
-                              "new_scenario_pack.py")
+_PKG = os.path.join(os.path.dirname(_HERE), "src", "aces_scenario_packs")
+_CI_PATH = os.path.join(_PKG, "content_ci.py")
+_SCAFFOLD_PATH = os.path.join(_PKG, "new_pack.py")
 
 
 def _load_module():
@@ -197,18 +197,18 @@ class SharedOracleModelGateTest(unittest.TestCase):
         self.assertEqual(failures, [])
 
     def test_missing_shared_oracle_model_is_flagged(self):
+        # The model ships inside the package; simulate a broken package build by
+        # pointing the package dir at a location that has no oracle_model.py.
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
-        scen = os.path.join(tmp, "scenarios")
-        os.makedirs(os.path.join(scen, "_oracle"), exist_ok=True)
 
-        orig_scen, orig_repo = CI.SCEN, CI._REPO
-        CI.SCEN, CI._REPO = scen, tmp
+        orig_pkg = CI._PKG
+        CI._PKG = tmp
         try:
             failures: list[str] = []
             CI.check_shared_oracle_model(failures)
         finally:
-            CI.SCEN, CI._REPO = orig_scen, orig_repo
+            CI._PKG = orig_pkg
 
         self.assertIn("shared oracle model MISSING", "\n".join(failures))
 

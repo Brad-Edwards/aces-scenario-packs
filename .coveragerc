@@ -6,8 +6,7 @@
 # apply.
 [run]
 source =
-    scripts
-    scenarios/_oracle
+    src/aces_scenario_packs
 relative_files = True
 
 [report]

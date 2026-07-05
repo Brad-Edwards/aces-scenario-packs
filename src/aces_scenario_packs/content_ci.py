@@ -26,7 +26,7 @@ so every present and future pack benefits:
 
 Stdlib + PyYAML only. Run locally exactly as CI does:
 
-    python3 scripts/ci/scenario_content_ci.py
+    aces-pack-validate --repo .
 """
 
 from __future__ import annotations
@@ -35,21 +35,33 @@ import os
 import re
 import subprocess
 import sys
-from typing import Any
 
 import yaml
 
-_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from collections.abc import Iterator
+
+# Canonical contract resources ship inside this installed package (schemas,
+# template, oracle fixtures + model). They are resolved relative to the package,
+# never the consumer's working tree.
+_PKG = os.path.dirname(os.path.abspath(__file__))
+_RES = os.path.join(_PKG, "resources")
+_SCHEMAS_DIR = os.path.join(_RES, "schemas")
+_TEMPLATE_DIR = os.path.join(_RES, "template")
+_ORACLE_DIR = os.path.join(_RES, "oracle")
+
+# The catalog under validation is the consumer's tree: <_REPO>/scenarios/<pack>/.
+# Defaults to the current directory; override with --repo, or by setting these
+# module globals directly (tests do this).
+_REPO = os.getcwd()
 SCEN = os.path.join(_REPO, "scenarios")
-COMPATIBILITY_SCHEMA_FILE = "pack-compatibility.schema.yaml"
-COMPATIBILITY_EXAMPLE_FILE = os.path.join("_template", "pack.compatibility.example.yaml")
+
 COMPATIBILITY_MANIFEST_FILE = "pack.compatibility.yaml"
 PACK_MANIFEST_FILE = "pack.yaml"
-
-# Provenance ledger (issue #48): the canonical source/licensing/safety/
-# publication/overlay-boundary contract every pack declares from its pack.yaml.
+COMPATIBILITY_SCHEMA_FILE = "pack-compatibility.schema.yaml"
 PROVENANCE_SCHEMA_FILE = "provenance.schema.yaml"
-PROVENANCE_EXAMPLE_FILE = os.path.join("_template", "docs", "provenance-ledger.example.yaml")
+# Display labels for the packaged example fixtures (used in messages only).
+COMPATIBILITY_EXAMPLE_FILE = os.path.join("template", "pack.compatibility.example.yaml")
+PROVENANCE_EXAMPLE_FILE = os.path.join("template", "docs", "provenance-ledger.example.yaml")
 # Safety attestations that must all be true to ship — the policy is EXCLUSION of
 # real sensitive content, never a weaker classification.
 CONTENT_SAFETY_FLAGS = (
@@ -66,19 +78,23 @@ REQUIRED_REVIEW_GATES = ("licensing", "attribution", "sensitive-data", "offensiv
 
 
 def compatibility_schema_path() -> str:
-    return os.path.join(SCEN, COMPATIBILITY_SCHEMA_FILE)
+    """Compatibility schema path."""
+    return os.path.join(_SCHEMAS_DIR, "pack-compatibility.schema.yaml")
 
 
 def compatibility_example_path() -> str:
-    return os.path.join(SCEN, COMPATIBILITY_EXAMPLE_FILE)
+    """Compatibility example path."""
+    return os.path.join(_TEMPLATE_DIR, "pack.compatibility.example.yaml")
 
 
 def provenance_schema_path() -> str:
-    return os.path.join(SCEN, PROVENANCE_SCHEMA_FILE)
+    """Provenance schema path."""
+    return os.path.join(_SCHEMAS_DIR, "provenance.schema.yaml")
 
 
 def provenance_example_path() -> str:
-    return os.path.join(SCEN, PROVENANCE_EXAMPLE_FILE)
+    """Provenance example path."""
+    return os.path.join(_TEMPLATE_DIR, "docs", "provenance-ledger.example.yaml")
 
 # Packs are scenarios/<name>/ with a pack.yaml. _template is a scaffold, not a
 # pack; design-notes is shared prose. `polaris` is the legacy NORTHSTORM
@@ -106,6 +122,7 @@ TEXT_EXT = {".md", ".txt", ".yaml", ".yml", ".csv", ".json", ".log", ".note"}
 
 
 def _git_lines(args: list[str]) -> list[str]:
+    """Git lines."""
     try:
         r = subprocess.run(
             ["git", "-C", _REPO, *args],
@@ -121,20 +138,22 @@ def _git_lines(args: list[str]) -> list[str]:
 
 
 def _is_git_visible_pack_dir(name: str) -> bool:
-    if _git_lines(["rev-parse", "--is-inside-work-tree"]) != ["true"]:
-        return True
-    if os.path.abspath(SCEN) != os.path.join(os.path.abspath(_REPO), "scenarios"):
+    """Is git visible pack dir."""
+    if (_git_lines(["rev-parse", "--is-inside-work-tree"]) != ["true"]
+            or os.path.abspath(SCEN) != os.path.join(os.path.abspath(_REPO), "scenarios")):
         return True
     rel = os.path.join("scenarios", name)
-    if _git_lines(["ls-files", "--", rel]):
-        return True
-    # Include new local scenario work that is not ignored yet, so developers
-    # still get manifest/checklist failures before the first commit. Ignored
-    # cache-only directories, such as stray __pycache__ trees, are skipped.
-    return bool(_git_lines(["status", "--porcelain", "--untracked-files=all", "--", rel]))
+    # Tracked (ls-files) or new local work not yet ignored, so developers still
+    # get manifest/checklist failures before the first commit. Ignored
+    # cache-only directories (stray __pycache__) are excluded by git.
+    return bool(_git_lines(["ls-files", "--", rel])
+                or _git_lines(["status", "--porcelain", "--untracked-files=all", "--", rel]))
 
 
 def _packs() -> list[str]:
+    """Packs."""
+    if not os.path.isdir(SCEN):
+        return []
     out = []
     for name in sorted(os.listdir(SCEN)):
         p = os.path.join(SCEN, name)
@@ -152,24 +171,35 @@ def _packs() -> list[str]:
 VALIDATOR_DIRS = ("sdl", "profiles")
 
 
+def _run_one_validator(vdir: str, fname: str, tag: str, failures: list[str]) -> None:
+    """Run one validator."""
+    r = subprocess.run([sys.executable, os.path.join(vdir, fname), "validate"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        failures.append(f"validator FAILED: {tag}\n{r.stdout[-800:]}{r.stderr[-800:]}")
+    else:
+        print(f"  [ok] {tag}")
+
+
+def _check_validator_dir(pack: str, sub: str, failures: list[str]) -> None:
+    """Check validator dir."""
+    vdir = os.path.join(SCEN, pack, sub)
+    if not os.path.isdir(vdir):
+        return
+    for fname in sorted(os.listdir(vdir)):
+        if fname.startswith("validate_") and fname.endswith(".py"):
+            _run_one_validator(vdir, fname, f"{pack}/{sub}/{fname}", failures)
+
+
 def check_validators(failures: list[str]) -> None:
+    """Check validators."""
     for pack in _packs():
         for sub in VALIDATOR_DIRS:
-            vdir = os.path.join(SCEN, pack, sub)
-            if not os.path.isdir(vdir):
-                continue
-            for f in sorted(os.listdir(vdir)):
-                if f.startswith("validate_") and f.endswith(".py"):
-                    r = subprocess.run([sys.executable, os.path.join(vdir, f), "validate"],
-                                       capture_output=True, text=True)
-                    tag = f"{pack}/{sub}/{f}"
-                    if r.returncode != 0:
-                        failures.append(f"validator FAILED: {tag}\n{r.stdout[-800:]}{r.stderr[-800:]}")
-                    else:
-                        print(f"  [ok] {tag}")
+            _check_validator_dir(pack, sub, failures)
 
 
 def check_tests(failures: list[str]) -> None:
+    """Check tests."""
     for pack in _packs():
         for sub in ("sdl/tests", "build/tests", "profiles/tests", "ctfd/tests"):
             d = os.path.join(SCEN, pack, sub)
@@ -185,7 +215,7 @@ def check_tests(failures: list[str]) -> None:
                 print(f"  [ok] {tag} ({r.stderr.strip().splitlines()[-1] if r.stderr else 'ok'})")
 
 
-def _iter_text_files(root: str):
+def _iter_text_files(root: str) -> Iterator[str]:
     """Yield every text-extension file under ``root`` (recursive)."""
     for dirpath, _dirs, files in os.walk(root):
         for name in files:
@@ -238,6 +268,7 @@ def _participant_roots(pack: str) -> list[str]:
 
 
 def check_visibility(failures: list[str]) -> None:
+    """Check visibility."""
     for pack in _packs():
         for root in _participant_roots(pack):
             if not os.path.isdir(root):
@@ -290,12 +321,14 @@ def check_wizard_spider_pack_drift(failures: list[str]) -> None:
         print(f"  [ok] wizard-spider pack drift scan ({scanned} files)")
 
 
-def _shared_oracle_dir() -> str:
-    return os.path.join(SCEN, "_oracle")
+def _shared_oracle_model_file() -> str:
+    """Shared oracle model file."""
+    return os.path.join(_PKG, "oracle_model.py")
 
 
 def _shared_oracle_fixture_paths() -> list[str]:
-    fixtures = os.path.join(_shared_oracle_dir(), "fixtures")
+    """Shared oracle fixture paths."""
+    fixtures = os.path.join(_ORACLE_DIR, "fixtures")
     if not os.path.isdir(fixtures):
         return []
     return [
@@ -306,29 +339,26 @@ def _shared_oracle_fixture_paths() -> list[str]:
 
 
 def check_shared_oracle_model(failures: list[str]) -> None:
-    """Validate the shared oracle model fixtures and tests.
+    """Smoke-check the packaged shared oracle model against its shipped fixtures.
 
-    The shared oracle directory is not a scenario pack. It is a reusable
-    operator/oracle-only authoring contract, so it gets its own gate instead of
-    flowing through pack discovery.
+    The model and fixtures ship inside this package; the package's own test suite
+    exercises the model's behaviour. This gate only confirms the shipped model
+    validates its shipped fixtures, so a broken release is caught in the field.
     """
-    oracle_dir = _shared_oracle_dir()
-    model = os.path.join(oracle_dir, "oracle_model.py")
+    model = _shared_oracle_model_file()
     fixtures = _shared_oracle_fixture_paths()
-    tests = os.path.join(oracle_dir, "tests")
 
     if not os.path.isfile(model):
-        failures.append("shared oracle model MISSING: scenarios/_oracle/oracle_model.py")
+        failures.append("shared oracle model MISSING from package")
         return
     if not fixtures:
-        failures.append("shared oracle fixtures MISSING: scenarios/_oracle/fixtures/*.yaml")
+        failures.append("shared oracle fixtures MISSING from package")
         return
 
     r = subprocess.run(
         [sys.executable, model, "validate", *fixtures],
         capture_output=True,
         text=True,
-        cwd=_REPO,
     )
     if r.returncode != 0:
         failures.append(
@@ -337,23 +367,9 @@ def check_shared_oracle_model(failures: list[str]) -> None:
     else:
         print(f"  [ok] shared oracle fixtures ({len(fixtures)} files)")
 
-    if not os.path.isdir(tests):
-        failures.append("shared oracle tests MISSING: scenarios/_oracle/tests")
-        return
-    r = subprocess.run(
-        [sys.executable, "-m", "unittest", "discover", "-s", tests],
-        capture_output=True,
-        text=True,
-        cwd=_REPO,
-    )
-    if r.returncode != 0:
-        failures.append(f"shared oracle tests FAILED:\n{r.stderr[-1200:]}")
-    else:
-        summary = r.stderr.strip().splitlines()[-1] if r.stderr else "ok"
-        print(f"  [ok] shared oracle tests ({summary})")
 
-
-def _load_yaml(path: str, failures: list[str], label: str) -> Any:
+def _load_yaml(path: str, failures: list[str], label: str) -> object:
+    """Load yaml."""
     try:
         with open(path, "r", encoding="utf-8") as fh:
             return yaml.safe_load(fh)
@@ -362,11 +378,12 @@ def _load_yaml(path: str, failures: list[str], label: str) -> Any:
         return None
 
 
-def _resolve_ref(schema: dict[str, Any], ref: str) -> dict[str, Any] | None:
+def _resolve_ref(schema: dict[str, object], ref: str) -> dict[str, object] | None:
+    """Resolve ref."""
     prefix = "#/$defs/"
     if not ref.startswith(prefix):
         return None
-    target: Any = schema
+    target: object = schema
     for part in ref[len("#/"):].split("/"):
         if not isinstance(target, dict) or part not in target:
             return None
@@ -374,39 +391,42 @@ def _resolve_ref(schema: dict[str, Any], ref: str) -> dict[str, Any] | None:
     return target if isinstance(target, dict) else None
 
 
-def _schema_type_ok(value: Any, type_name: str) -> bool:
-    if type_name == "object":
-        return isinstance(value, dict)
-    if type_name == "array":
-        return isinstance(value, list)
-    if type_name == "string":
-        return isinstance(value, str)
-    if type_name == "integer":
-        return isinstance(value, int) and not isinstance(value, bool)
-    if type_name == "boolean":
-        return isinstance(value, bool)
-    if type_name == "null":
-        return value is None
-    return True
+_SCHEMA_TYPE_CHECKS = {
+    "object": lambda v: isinstance(v, dict),
+    "array": lambda v: isinstance(v, list),
+    "string": lambda v: isinstance(v, str),
+    "integer": lambda v: isinstance(v, int) and not isinstance(v, bool),
+    "boolean": lambda v: isinstance(v, bool),
+    "null": lambda v: v is None,
+}
+
+# Order matters: bool is a subclass of int, so it must be checked first.
+_SCHEMA_TYPE_LABELS = (
+    (bool, "boolean"),
+    (int, "integer"),
+    (str, "string"),
+    (list, "array"),
+    (dict, "object"),
+)
 
 
-def _schema_type_label(value: Any) -> str:
+def _schema_type_ok(value: object, type_name: str) -> bool:
+    """Schema type ok."""
+    return _SCHEMA_TYPE_CHECKS.get(type_name, lambda _v: True)(value)
+
+
+def _schema_type_label(value: object) -> str:
+    """Schema type label."""
     if value is None:
         return "null"
-    if isinstance(value, bool):
-        return "boolean"
-    if isinstance(value, int):
-        return "integer"
-    if isinstance(value, str):
-        return "string"
-    if isinstance(value, list):
-        return "array"
-    if isinstance(value, dict):
-        return "object"
+    for py_type, label in _SCHEMA_TYPE_LABELS:
+        if isinstance(value, py_type):
+            return label
     return type(value).__name__
 
 
-def _schema_expected_types(schema: dict[str, Any]) -> list[str] | None:
+def _schema_expected_types(schema: dict[str, object]) -> list[str] | None:
+    """Schema expected types."""
     expected = schema.get("type")
     if expected is None:
         return None
@@ -415,8 +435,9 @@ def _schema_expected_types(schema: dict[str, Any]) -> list[str] | None:
     return [str(expected)]
 
 
-def _validate_schema_type(value: Any, schema: dict[str, Any], path: str,
+def _validate_schema_type(value: object, schema: dict[str, object], path: str,
                           errors: list[str]) -> bool:
+    """Validate schema type."""
     expected_types = _schema_expected_types(schema)
     if expected_types is None:
         return True
@@ -428,8 +449,9 @@ def _validate_schema_type(value: Any, schema: dict[str, Any], path: str,
     return False
 
 
-def _validate_schema_value_constraints(value: Any, schema: dict[str, Any],
+def _validate_schema_value_constraints(value: object, schema: dict[str, object],
                                        path: str, errors: list[str]) -> None:
+    """Validate schema value constraints."""
     if "const" in schema and value != schema["const"]:
         errors.append(f"{path}: expected constant {schema['const']!r}")
     if "enum" in schema and value not in schema["enum"]:
@@ -439,13 +461,15 @@ def _validate_schema_value_constraints(value: Any, schema: dict[str, Any],
             errors.append(f"{path}: does not match required pattern")
 
 
-def _schema_properties(schema: dict[str, Any]) -> dict[str, Any]:
+def _schema_properties(schema: dict[str, object]) -> dict[str, object]:
+    """Schema properties."""
     props = schema.get("properties", {})
     return props if isinstance(props, dict) else {}
 
 
-def _validate_required_fields(value: dict[str, Any], schema: dict[str, Any],
+def _validate_required_fields(value: dict[str, object], schema: dict[str, object],
                               path: str, errors: list[str]) -> None:
+    """Validate required fields."""
     required = schema.get("required", [])
     if not isinstance(required, list):
         return
@@ -454,9 +478,10 @@ def _validate_required_fields(value: dict[str, Any], schema: dict[str, Any],
             errors.append(f"{path}.{key}: required field missing")
 
 
-def _validate_known_fields(value: dict[str, Any], schema: dict[str, Any],
-                           props: dict[str, Any], path: str,
+def _validate_known_fields(value: dict[str, object], schema: dict[str, object],
+                           props: dict[str, object], path: str,
                            errors: list[str]) -> None:
+    """Validate known fields."""
     if schema.get("additionalProperties") is not False:
         return
     for key in value:
@@ -464,9 +489,10 @@ def _validate_known_fields(value: dict[str, Any], schema: dict[str, Any],
             errors.append(f"{path}.{key}: unknown field")
 
 
-def _validate_schema_object(value: dict[str, Any], schema: dict[str, Any],
-                            root_schema: dict[str, Any], path: str,
+def _validate_schema_object(value: dict[str, object], schema: dict[str, object],
+                            root_schema: dict[str, object], path: str,
                             errors: list[str]) -> None:
+    """Validate schema object."""
     props = _schema_properties(schema)
     _validate_required_fields(value, schema, path, errors)
     _validate_known_fields(value, schema, props, path, errors)
@@ -476,9 +502,10 @@ def _validate_schema_object(value: dict[str, Any], schema: dict[str, Any],
                 value[key], child_schema, root_schema, f"{path}.{key}", errors)
 
 
-def _validate_schema_array(value: list[Any], schema: dict[str, Any],
-                           root_schema: dict[str, Any], path: str,
+def _validate_schema_array(value: list[object], schema: dict[str, object],
+                           root_schema: dict[str, object], path: str,
                            errors: list[str]) -> None:
+    """Validate schema array."""
     if "minItems" in schema and len(value) < int(schema["minItems"]):
         errors.append(f"{path}: expected at least {schema['minItems']} item(s)")
     item_schema = schema.get("items")
@@ -489,9 +516,10 @@ def _validate_schema_array(value: list[Any], schema: dict[str, Any],
                                      errors)
 
 
-def _validate_json_schema_subset(value: Any, schema: dict[str, Any],
-                                 root_schema: dict[str, Any], path: str,
+def _validate_json_schema_subset(value: object, schema: dict[str, object],
+                                 root_schema: dict[str, object], path: str,
                                  errors: list[str]) -> None:
+    """Validate json schema subset."""
     if "$ref" in schema:
         resolved = _resolve_ref(root_schema, str(schema["$ref"]))
         if resolved is None:
@@ -511,6 +539,7 @@ def _validate_json_schema_subset(value: Any, schema: dict[str, Any],
 
 
 def _path_inside_pack(pack_root: str, rel_path: str) -> bool:
+    """Path inside pack."""
     if not rel_path or os.path.isabs(rel_path):
         return False
     root = os.path.abspath(pack_root)
@@ -518,7 +547,8 @@ def _path_inside_pack(pack_root: str, rel_path: str) -> bool:
     return os.path.commonpath([root, target]) == root
 
 
-def _iter_path_fields(value: Any, path: str = "$"):
+def _iter_path_fields(value: object, path: str = "$") -> Iterator[tuple[str, object]]:
+    """Iter path fields."""
     if isinstance(value, dict):
         for key, child in value.items():
             child_path = f"{path}.{key}"
@@ -530,8 +560,9 @@ def _iter_path_fields(value: Any, path: str = "$"):
             yield from _iter_path_fields(child, f"{path}[{idx}]")
 
 
-def _get_nested(value: dict[str, Any], dotted: str) -> Any:
-    cur: Any = value
+def _get_nested(value: dict[str, object], dotted: str) -> object:
+    """Get nested."""
+    cur: object = value
     for part in dotted.split("."):
         if not isinstance(cur, dict):
             return None
@@ -540,10 +571,12 @@ def _get_nested(value: dict[str, Any], dotted: str) -> Any:
 
 
 def _norm_manifest_path(rel_path: str) -> str:
+    """Norm manifest path."""
     return os.path.normpath(rel_path).rstrip(os.sep)
 
 
 def _path_is_parent(parent: str, child: str) -> bool:
+    """Path is parent."""
     parent_norm = _norm_manifest_path(parent)
     child_norm = _norm_manifest_path(child)
     if parent_norm in ("", ".") or parent_norm == child_norm:
@@ -556,7 +589,8 @@ EXPOSED_BOUNDARY_GROUPS = ("participant_visible", "operator_only", "commercial")
 PRIVATE_BOUNDARY_EXPORTS = {"oracle", "private"}
 
 
-def _iter_boundary_rows(boundaries: dict[str, Any], group: str):
+def _iter_boundary_rows(boundaries: dict[str, object], group: str) -> Iterator[dict[str, object]]:
+    """Iter boundary rows."""
     rows = boundaries.get(group, [])
     if not isinstance(rows, list):
         return
@@ -565,16 +599,19 @@ def _iter_boundary_rows(boundaries: dict[str, Any], group: str):
             yield row
 
 
-def _boundary_path(row: dict[str, Any]) -> str | None:
+def _boundary_path(row: dict[str, object]) -> str | None:
+    """Boundary path."""
     path = row.get("path")
     return path if isinstance(path, str) else None
 
 
-def _is_private_boundary(group: str, row: dict[str, Any]) -> bool:
+def _is_private_boundary(group: str, row: dict[str, object]) -> bool:
+    """Is private boundary."""
     return group == "oracle_only" or row.get("export") in PRIVATE_BOUNDARY_EXPORTS
 
 
-def _private_boundary_paths(boundaries: dict[str, Any]) -> list[str]:
+def _private_boundary_paths(boundaries: dict[str, object]) -> list[str]:
+    """Private boundary paths."""
     private_paths: list[str] = []
     for group in BOUNDARY_GROUPS:
         for row in _iter_boundary_rows(boundaries, group):
@@ -584,7 +621,8 @@ def _private_boundary_paths(boundaries: dict[str, Any]) -> list[str]:
     return private_paths
 
 
-def _iter_exposed_boundary_paths(boundaries: dict[str, Any]):
+def _iter_exposed_boundary_paths(boundaries: dict[str, object]) -> Iterator[tuple[str, str]]:
+    """Iter exposed boundary paths."""
     for group in EXPOSED_BOUNDARY_GROUPS:
         for row in _iter_boundary_rows(boundaries, group):
             path = _boundary_path(row)
@@ -594,13 +632,15 @@ def _iter_exposed_boundary_paths(boundaries: dict[str, Any]):
 
 def _record_boundary_overlap(failures: list[str], pack: str, group: str,
                              exposed_path: str, private_path: str) -> None:
+    """Record boundary overlap."""
     failures.append(
         f"compatibility manifest INVALID: {pack}: {group} path "
         f"{exposed_path} contains oracle/private path {private_path}")
 
 
-def _check_boundary_overlaps(manifest: dict[str, Any], failures: list[str],
+def _check_boundary_overlaps(manifest: dict[str, object], failures: list[str],
                              pack: str) -> None:
+    """Check boundary overlaps."""
     boundaries = manifest.get("artifact_boundaries")
     if not isinstance(boundaries, dict):
         return
@@ -612,7 +652,8 @@ def _check_boundary_overlaps(manifest: dict[str, Any], failures: list[str],
                                          private_path)
 
 
-def _check_duplicate_ids(manifest: dict[str, Any], failures: list[str], pack: str) -> None:
+def _check_duplicate_ids(manifest: dict[str, object], failures: list[str], pack: str) -> None:
+    """Check duplicate ids."""
     checks = [
         ("runtime_profiles", "profile_id"),
         ("delivery_bundles", "bundle_id"),
@@ -637,28 +678,41 @@ def _check_duplicate_ids(manifest: dict[str, Any], failures: list[str], pack: st
             seen.add(value)
 
 
-def _validate_compatibility_manifest(pack: str, pack_yaml: dict[str, Any],
-                                     failures: list[str]) -> None:
+def _load_pack_doc(pack: str, pack_yaml: dict[str, object], key: str,
+                   label: str, schema_path: str, failures: list[str], *,
+                   required: bool) -> tuple[dict[str, object], dict[str, object], str] | None:
+    """Load a pack-referenced YAML doc and its schema, or None (recording a failure)."""
     pack_root = os.path.join(SCEN, pack)
-    manifest_rel = pack_yaml.get("compatibility_manifest")
-    if manifest_rel is None:
-        return
-    if not isinstance(manifest_rel, str) or not _path_inside_pack(pack_root, manifest_rel):
-        failures.append(
-            f"compatibility manifest INVALID: {pack}: compatibility_manifest "
-            "path escapes pack root")
-        return
-
-    manifest_path = os.path.join(pack_root, manifest_rel)
-    if not os.path.isfile(manifest_path):
-        failures.append(f"compatibility manifest MISSING: scenarios/{pack}/{manifest_rel}")
-        return
-
-    schema = _load_yaml(compatibility_schema_path(), failures, "compatibility schema")
-    manifest = _load_yaml(manifest_path, failures, "compatibility manifest")
+    rel = pack_yaml.get(key)
+    if not isinstance(rel, str) or not _path_inside_pack(pack_root, rel):
+        if rel is not None:
+            failures.append(f"{label} INVALID: {pack}: {key} path escapes pack root")
+        elif required:
+            failures.append(
+                f"{label} MISSING: scenarios/{pack}/{PACK_MANIFEST_FILE} has no {key} pointer")
+        return None
+    path = os.path.join(pack_root, rel)
+    schema = manifest = None
+    if os.path.isfile(path):
+        schema = _load_yaml(schema_path, failures, f"{label} schema")
+        manifest = _load_yaml(path, failures, label)
     if not isinstance(schema, dict) or not isinstance(manifest, dict):
-        failures.append(f"compatibility manifest INVALID: scenarios/{pack}/{manifest_rel}")
+        state = "MISSING" if not os.path.isfile(path) else "INVALID"
+        failures.append(f"{label} {state}: scenarios/{pack}/{rel}")
+        return None
+    return schema, manifest, rel
+
+
+def _validate_compatibility_manifest(pack: str, pack_yaml: dict[str, object],
+                                     failures: list[str]) -> None:
+    """Validate compatibility manifest."""
+    pack_root = os.path.join(SCEN, pack)
+    loaded = _load_pack_doc(pack, pack_yaml, "compatibility_manifest",
+                            "compatibility manifest", compatibility_schema_path(),
+                            failures, required=False)
+    if loaded is None:
         return
+    schema, manifest, manifest_rel = loaded
 
     errors: list[str] = []
     _validate_json_schema_subset(manifest, schema, schema, "$", errors)
@@ -688,6 +742,7 @@ def _validate_compatibility_manifest(pack: str, pack_yaml: dict[str, Any],
 
 
 def check_compatibility_schema_example(failures: list[str]) -> None:
+    """Check compatibility schema example."""
     schema = _load_yaml(compatibility_schema_path(), failures, "compatibility schema")
     example = _load_yaml(compatibility_example_path(), failures, "compatibility example")
     if not isinstance(schema, dict) or not isinstance(example, dict):
@@ -703,6 +758,7 @@ def check_compatibility_schema_example(failures: list[str]) -> None:
 
 
 def check_manifest(failures: list[str]) -> None:
+    """Check manifest."""
     check_compatibility_schema_example(failures)
     for pack in _packs():
         pack_yaml_path = os.path.join(SCEN, pack, PACK_MANIFEST_FILE)
@@ -717,8 +773,9 @@ def check_manifest(failures: list[str]) -> None:
         print(f"  [ok] {pack}/{PACK_MANIFEST_FILE}")
 
 
-def _check_provenance_duplicate_ids(ledger: dict[str, Any], failures: list[str],
+def _check_provenance_duplicate_ids(ledger: dict[str, object], failures: list[str],
                                     pack: str) -> None:
+    """Check provenance duplicate ids."""
     for key, id_key in (("sources", "source_id"), ("artifacts", "artifact_id"),
                         ("overlays", "overlay_id")):
         rows = ledger.get(key)
@@ -735,7 +792,8 @@ def _check_provenance_duplicate_ids(ledger: dict[str, Any], failures: list[str],
             seen.add(value)
 
 
-def _provenance_source_ids(ledger: dict[str, Any]) -> set[str]:
+def _provenance_source_ids(ledger: dict[str, object]) -> set[str]:
+    """Provenance source ids."""
     ids: set[str] = set()
     sources = ledger.get("sources")
     if isinstance(sources, list):
@@ -745,8 +803,9 @@ def _provenance_source_ids(ledger: dict[str, Any]) -> set[str]:
     return ids
 
 
-def _provenance_overlay_roots(ledger: dict[str, Any], pack_root: str,
+def _provenance_overlay_roots(ledger: dict[str, object], pack_root: str,
                               failures: list[str], pack: str) -> list[str]:
+    """Provenance overlay roots."""
     roots: list[str] = []
     overlays = ledger.get("overlays")
     if not isinstance(overlays, list):
@@ -767,12 +826,14 @@ def _provenance_overlay_roots(ledger: dict[str, Any], pack_root: str,
 
 
 def _path_under_root(root: str, candidate: str) -> bool:
+    """Path under root."""
     return (_norm_manifest_path(root) == _norm_manifest_path(candidate)
             or _path_is_parent(root, candidate))
 
 
-def _check_provenance_content_safety(ledger: dict[str, Any], failures: list[str],
+def _check_provenance_content_safety(ledger: dict[str, object], failures: list[str],
                                      pack: str) -> None:
+    """Check provenance content safety."""
     safety = ledger.get("content_safety")
     if not isinstance(safety, dict):
         return
@@ -783,8 +844,9 @@ def _check_provenance_content_safety(ledger: dict[str, Any], failures: list[str]
                 "true (policy is exclusion of real sensitive content)")
 
 
-def _check_provenance_review_gates(ledger: dict[str, Any], failures: list[str],
+def _check_provenance_review_gates(ledger: dict[str, object], failures: list[str],
                                    pack: str) -> None:
+    """Check provenance review gates."""
     review = ledger.get("review")
     if not isinstance(review, dict):
         return
@@ -801,8 +863,9 @@ def _check_provenance_review_gates(ledger: dict[str, Any], failures: list[str],
                 f"gate {required_gate}")
 
 
-def _check_provenance_sources(ledger: dict[str, Any], failures: list[str],
+def _check_provenance_sources(ledger: dict[str, object], failures: list[str],
                               pack: str) -> None:
+    """Check provenance sources."""
     sources = ledger.get("sources")
     if not isinstance(sources, list):
         return
@@ -815,8 +878,9 @@ def _check_provenance_sources(ledger: dict[str, Any], failures: list[str],
                 "sets attribution_required but carries no attribution text")
 
 
-def _check_artifact_path(pack_root: str, aid: Any, apath: str,
+def _check_artifact_path(pack_root: str, aid: object, apath: str,
                          failures: list[str], pack: str) -> None:
+    """Check artifact path."""
     if not _path_inside_pack(pack_root, apath):
         failures.append(
             f"provenance ledger INVALID: {pack}: artifact {aid} path escapes "
@@ -827,8 +891,9 @@ def _check_artifact_path(pack_root: str, aid: Any, apath: str,
             f"missing path {apath}")
 
 
-def _check_artifact_source_refs(aid: Any, refs: Any, source_ids: set[str],
+def _check_artifact_source_refs(aid: object, refs: object, source_ids: set[str],
                                 failures: list[str], pack: str) -> None:
+    """Check artifact source refs."""
     if not isinstance(refs, list):
         return
     for sid in refs:
@@ -838,7 +903,8 @@ def _check_artifact_source_refs(aid: Any, refs: Any, source_ids: set[str],
                 f"references unknown source_id {sid}")
 
 
-def _artifact_under_overlay(apath: Any, overlay_roots: list[str]) -> bool:
+def _artifact_under_overlay(apath: object, overlay_roots: list[str]) -> bool:
+    """Artifact under overlay."""
     return isinstance(apath, str) and any(
         _path_under_root(root, apath) for root in overlay_roots)
 
@@ -847,6 +913,7 @@ def _check_overlay_base_overlap(overlay_roots: list[str], base_paths: list[str],
                                 failures: list[str], pack: str) -> None:
     # A customer overlay must be removable without touching base content: its root
     # may not contain — or live inside — any base (non-customer) artifact root.
+    """Check overlay base overlap."""
     for root in overlay_roots:
         for base in base_paths:
             if _path_under_root(root, base) or _path_under_root(base, root):
@@ -855,9 +922,10 @@ def _check_overlay_base_overlap(overlay_roots: list[str], base_paths: list[str],
                     f"base artifact path {base}")
 
 
-def _check_provenance_artifacts(ledger: dict[str, Any], pack_root: str,
+def _check_provenance_artifacts(ledger: dict[str, object], pack_root: str,
                                 source_ids: set[str], overlay_roots: list[str],
                                 failures: list[str], pack: str) -> None:
+    """Check provenance artifacts."""
     artifacts = ledger.get("artifacts")
     if not isinstance(artifacts, list):
         return
@@ -880,30 +948,16 @@ def _check_provenance_artifacts(ledger: dict[str, Any], pack_root: str,
     _check_overlay_base_overlap(overlay_roots, base_paths, failures, pack)
 
 
-def _validate_provenance_ledger(pack: str, pack_yaml: dict[str, Any],
+def _validate_provenance_ledger(pack: str, pack_yaml: dict[str, object],
                                 failures: list[str]) -> None:
+    """Validate provenance ledger."""
     pack_root = os.path.join(SCEN, pack)
-    ledger_rel = pack_yaml.get("provenance_ledger")
-    if ledger_rel is None:
-        failures.append(
-            f"provenance ledger MISSING: scenarios/{pack}/{PACK_MANIFEST_FILE} has no "
-            "provenance_ledger pointer")
+    loaded = _load_pack_doc(pack, pack_yaml, "provenance_ledger",
+                            "provenance ledger", provenance_schema_path(),
+                            failures, required=True)
+    if loaded is None:
         return
-    if not isinstance(ledger_rel, str) or not _path_inside_pack(pack_root, ledger_rel):
-        failures.append(
-            f"provenance ledger INVALID: {pack}: provenance_ledger path escapes "
-            "pack root")
-        return
-    ledger_path = os.path.join(pack_root, ledger_rel)
-    if not os.path.isfile(ledger_path):
-        failures.append(f"provenance ledger MISSING: scenarios/{pack}/{ledger_rel}")
-        return
-
-    schema = _load_yaml(provenance_schema_path(), failures, "provenance schema")
-    ledger = _load_yaml(ledger_path, failures, "provenance ledger")
-    if not isinstance(schema, dict) or not isinstance(ledger, dict):
-        failures.append(f"provenance ledger INVALID: scenarios/{pack}/{ledger_rel}")
-        return
+    schema, ledger, ledger_rel = loaded
 
     errors: list[str] = []
     _validate_json_schema_subset(ledger, schema, schema, "$", errors)
@@ -929,6 +983,7 @@ def _validate_provenance_ledger(pack: str, pack_yaml: dict[str, Any],
 
 
 def check_provenance_schema_example(failures: list[str]) -> None:
+    """Check provenance schema example."""
     schema = _load_yaml(provenance_schema_path(), failures, "provenance schema")
     example = _load_yaml(provenance_example_path(), failures, "provenance example")
     if not isinstance(schema, dict) or not isinstance(example, dict):
@@ -944,11 +999,13 @@ def check_provenance_schema_example(failures: list[str]) -> None:
 
 
 def check_provenance(failures: list[str]) -> None:
+    """Check provenance."""
     check_provenance_schema_example(failures)
     for pack in _packs():
         pack_yaml_path = os.path.join(SCEN, pack, PACK_MANIFEST_FILE)
         if not os.path.isfile(pack_yaml_path):
-            continue  # check_manifest already reports the missing pack manifest
+            # check_manifest already reports the missing pack manifest
+            continue
         pack_yaml = _load_yaml(pack_yaml_path, failures, "manifest")
         if not isinstance(pack_yaml, dict):
             continue
@@ -957,6 +1014,7 @@ def check_provenance(failures: list[str]) -> None:
 
 
 def check_golden_checklist(failures: list[str]) -> None:
+    """Check golden checklist."""
     for pack in _packs():
         checklist = os.path.join(SCEN, pack, "docs", "golden-readiness-checklist.md")
         if not os.path.isfile(checklist):
@@ -980,16 +1038,36 @@ def check_golden_checklist(failures: list[str]) -> None:
             print(f"  [ok] {pack}/docs/golden-readiness-checklist.md")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point."""
+    global _REPO, SCEN
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Validate a scenario-pack catalog against the ACES pack contract.")
+    parser.add_argument(
+        "--repo", default=_REPO,
+        help="Catalog root containing scenarios/<pack>/ (default: current directory).")
+    args = parser.parse_args(argv)
+    _REPO = os.path.abspath(args.repo)
+    SCEN = os.path.join(_REPO, "scenarios")
+
     failures: list[str] = []
-    print("== shared oracle model =="); check_shared_oracle_model(failures)
-    print("== validators =="); check_validators(failures)
-    print("== test suites =="); check_tests(failures)
-    print("== visibility scan =="); check_visibility(failures)
-    print("== pack drift scan =="); check_wizard_spider_pack_drift(failures)
-    print("== manifests =="); check_manifest(failures)
-    print("== provenance ledgers =="); check_provenance(failures)
-    print("== golden readiness checklists =="); check_golden_checklist(failures)
+    print("== shared oracle model ==")
+    check_shared_oracle_model(failures)
+    print("== validators ==")
+    check_validators(failures)
+    print("== test suites ==")
+    check_tests(failures)
+    print("== visibility scan ==")
+    check_visibility(failures)
+    print("== pack drift scan ==")
+    check_wizard_spider_pack_drift(failures)
+    print("== manifests ==")
+    check_manifest(failures)
+    print("== provenance ledgers ==")
+    check_provenance(failures)
+    print("== golden readiness checklists ==")
+    check_golden_checklist(failures)
     print()
     if failures:
         print(f"SCENARIO-CONTENT CI: FAIL ({len(failures)} issue(s))")

@@ -63,7 +63,7 @@ The three must agree path-for-path. A mismatch between them is a defect.
 `pack.yaml` remains the private catalog entrypoint. When it contains
 `compatibility_manifest: pack.compatibility.yaml`, the referenced file is
 validated against `scenarios/pack-compatibility.schema.yaml` by
-`scripts/ci/scenario_content_ci.py`.
+`aces-pack-validate`.
 
 That schema is transitional local validation for existing pack content. Do not
 extend it to define public v1 semantics; format-defining compatibility work
@@ -87,7 +87,7 @@ store.
 
 Every pack ships `docs/provenance-ledger.yaml`, referenced from `pack.yaml`
 (`provenance_ledger:`) and validated against
-`scenarios/provenance.schema.yaml` by `scripts/ci/scenario_content_ci.py`. It is
+`scenarios/provenance.schema.yaml` by `aces-pack-validate`. It is
 the canonical, machine-readable record of:
 
 - **`sources[]`** — upstream corpora, frameworks, tooling, datasets, research,
@@ -163,7 +163,7 @@ contract.
 ## Build, Release & Versioning
 
 Packaging and release verification is the repo-wide, static/read-only gate
-`scripts/ci/pack_release.py`, run in/behind the scenario-content gate. It lints
+`aces-pack-release`, run in/behind the scenario-content gate. It lints
 profile-support consistency (a `supported` delivery bundle must actually ship
 its content, or the build fails fast), builds a boundary-split release tree
 (`participant/`, `operator/`, `oracle/`, `commercial/`) with the participant
@@ -172,7 +172,7 @@ participant exposure, and emits a versioned `release.yaml` (pack version, the
 scenario-pack contract version + digest from `scenarios/README.md`, supported
 profiles, and a bounded provenance summary). A pack is releasable once it ships
 a `pack.compatibility.yaml` with `artifact_boundaries`. Run
-`python3 scripts/ci/pack_release.py check --all` locally; see the "Build, release
+`aces-pack-release check --all` locally; see the "Build, release
 & versioning" section of `scenarios/README.md` for the full contract.
 
 Release metadata currently pins the local convention version and digest. Do not

@@ -3,15 +3,16 @@ project: aces-scenario-packs
 github_repo: Brad-Edwards/aces-scenario-packs
 short_code: ASP
 workflow:
-  test_command: python3 -m unittest discover -s scripts/ci/tests
-  completion_command: python3 -m unittest discover -s scripts/ci/tests && python3 scripts/ci/scenario_content_ci.py && python3 scripts/ci/pack_release.py check --all
-  lint_command: python3 -m compileall scripts scenarios
-  format_command: python3 -m compileall scripts scenarios
+  test_command: python3 -m unittest discover -s tests
+  completion_command: python3 -m unittest discover -s tests && PYTHONPATH=src python3 -m aces_scenario_packs.content_ci --repo . && PYTHONPATH=src python3 -m aces_scenario_packs.release check --all
+  lint_command: python3 -m compileall src tests
+  format_command: python3 -m compileall src tests
 docs:
+  adr_dir: docs/decisions/adrs/
   workflow_reference: docs/scenario-packs.md
 example_paths:
-  source: scripts/
-  test: scripts/ci/tests/
+  source: src/aces_scenario_packs/
+  test: tests/
 requirements:
   uid_examples:
     - ASP-0001

@@ -139,17 +139,15 @@ def _git_lines(args: list[str]) -> list[str]:
 
 def _is_git_visible_pack_dir(name: str) -> bool:
     """Is git visible pack dir."""
-    if _git_lines(["rev-parse", "--is-inside-work-tree"]) != ["true"]:
-        return True
-    if os.path.abspath(SCEN) != os.path.join(os.path.abspath(_REPO), "scenarios"):
+    if (_git_lines(["rev-parse", "--is-inside-work-tree"]) != ["true"]
+            or os.path.abspath(SCEN) != os.path.join(os.path.abspath(_REPO), "scenarios")):
         return True
     rel = os.path.join("scenarios", name)
-    if _git_lines(["ls-files", "--", rel]):
-        return True
-    # Include new local scenario work that is not ignored yet, so developers
-    # still get manifest/checklist failures before the first commit. Ignored
-    # cache-only directories, such as stray __pycache__ trees, are skipped.
-    return bool(_git_lines(["status", "--porcelain", "--untracked-files=all", "--", rel]))
+    # Tracked (ls-files) or new local work not yet ignored, so developers still
+    # get manifest/checklist failures before the first commit. Ignored
+    # cache-only directories (stray __pycache__) are excluded by git.
+    return bool(_git_lines(["ls-files", "--", rel])
+                or _git_lines(["status", "--porcelain", "--untracked-files=all", "--", rel]))
 
 
 def _packs() -> list[str]:
@@ -173,22 +171,31 @@ def _packs() -> list[str]:
 VALIDATOR_DIRS = ("sdl", "profiles")
 
 
+def _run_one_validator(vdir: str, fname: str, tag: str, failures: list[str]) -> None:
+    """Run one validator."""
+    r = subprocess.run([sys.executable, os.path.join(vdir, fname), "validate"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        failures.append(f"validator FAILED: {tag}\n{r.stdout[-800:]}{r.stderr[-800:]}")
+    else:
+        print(f"  [ok] {tag}")
+
+
+def _check_validator_dir(pack: str, sub: str, failures: list[str]) -> None:
+    """Check validator dir."""
+    vdir = os.path.join(SCEN, pack, sub)
+    if not os.path.isdir(vdir):
+        return
+    for fname in sorted(os.listdir(vdir)):
+        if fname.startswith("validate_") and fname.endswith(".py"):
+            _run_one_validator(vdir, fname, f"{pack}/{sub}/{fname}", failures)
+
+
 def check_validators(failures: list[str]) -> None:
     """Check validators."""
     for pack in _packs():
         for sub in VALIDATOR_DIRS:
-            vdir = os.path.join(SCEN, pack, sub)
-            if not os.path.isdir(vdir):
-                continue
-            for f in sorted(os.listdir(vdir)):
-                if f.startswith("validate_") and f.endswith(".py"):
-                    r = subprocess.run([sys.executable, os.path.join(vdir, f), "validate"],
-                                       capture_output=True, text=True)
-                    tag = f"{pack}/{sub}/{f}"
-                    if r.returncode != 0:
-                        failures.append(f"validator FAILED: {tag}\n{r.stdout[-800:]}{r.stderr[-800:]}")
-                    else:
-                        print(f"  [ok] {tag}")
+            _check_validator_dir(pack, sub, failures)
 
 
 def check_tests(failures: list[str]) -> None:
@@ -384,37 +391,37 @@ def _resolve_ref(schema: dict[str, object], ref: str) -> dict[str, object] | Non
     return target if isinstance(target, dict) else None
 
 
+_SCHEMA_TYPE_CHECKS = {
+    "object": lambda v: isinstance(v, dict),
+    "array": lambda v: isinstance(v, list),
+    "string": lambda v: isinstance(v, str),
+    "integer": lambda v: isinstance(v, int) and not isinstance(v, bool),
+    "boolean": lambda v: isinstance(v, bool),
+    "null": lambda v: v is None,
+}
+
+# Order matters: bool is a subclass of int, so it must be checked first.
+_SCHEMA_TYPE_LABELS = (
+    (bool, "boolean"),
+    (int, "integer"),
+    (str, "string"),
+    (list, "array"),
+    (dict, "object"),
+)
+
+
 def _schema_type_ok(value: object, type_name: str) -> bool:
     """Schema type ok."""
-    if type_name == "object":
-        return isinstance(value, dict)
-    if type_name == "array":
-        return isinstance(value, list)
-    if type_name == "string":
-        return isinstance(value, str)
-    if type_name == "integer":
-        return isinstance(value, int) and not isinstance(value, bool)
-    if type_name == "boolean":
-        return isinstance(value, bool)
-    if type_name == "null":
-        return value is None
-    return True
+    return _SCHEMA_TYPE_CHECKS.get(type_name, lambda _v: True)(value)
 
 
 def _schema_type_label(value: object) -> str:
     """Schema type label."""
     if value is None:
         return "null"
-    if isinstance(value, bool):
-        return "boolean"
-    if isinstance(value, int):
-        return "integer"
-    if isinstance(value, str):
-        return "string"
-    if isinstance(value, list):
-        return "array"
-    if isinstance(value, dict):
-        return "object"
+    for py_type, label in _SCHEMA_TYPE_LABELS:
+        if isinstance(value, py_type):
+            return label
     return type(value).__name__
 
 

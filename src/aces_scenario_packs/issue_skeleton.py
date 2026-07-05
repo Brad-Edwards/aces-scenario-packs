@@ -15,7 +15,7 @@ import subprocess
 import sys
 import textwrap
 from dataclasses import dataclass
-from typing import Any, Callable
+from collections.abc import Callable
 
 DEFAULT_REPO = "Brad-Edwards/aces-scenario-packs"
 PACK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
@@ -31,7 +31,7 @@ LABEL_TIER_ACES = "tier:aces"
 
 
 @dataclass(frozen=True)
-class PackPlan:
+class PackPlan(object):
     """PackPlan."""
     pack_id: str
     title: str
@@ -43,7 +43,7 @@ class PackPlan:
 
 
 @dataclass(frozen=True)
-class IssueTemplate:
+class IssueTemplate(object):
     """IssueTemplate."""
     key: str
     suffix: str
@@ -52,7 +52,7 @@ class IssueTemplate:
 
 
 @dataclass(frozen=True)
-class Operation:
+class Operation(object):
     """Operation."""
     action: str
     title: str
@@ -469,8 +469,8 @@ def wanted_labels(plan: PackPlan, template: IssueTemplate,
     return tuple(sorted(labels))
 
 
-def matching_issue(existing_issues: list[dict[str, Any]], title: str,
-                   milestone_number: int | None) -> dict[str, Any] | None:
+def matching_issue(existing_issues: list[dict[str, object]], title: str,
+                   milestone_number: int | None) -> dict[str, object] | None:
     """Matching issue."""
     for issue in existing_issues:
         issue_milestone = (issue.get("milestone") or {}).get("number")
@@ -480,7 +480,7 @@ def matching_issue(existing_issues: list[dict[str, Any]], title: str,
     return None
 
 
-def build_operations(plan: PackPlan, existing_issues: list[dict[str, Any]],
+def build_operations(plan: PackPlan, existing_issues: list[dict[str, object]],
                      *, available_labels: set[str] | None = None,
                      refresh_existing: bool = False,
                      milestone_exists: bool = True) -> list[Operation]:
@@ -525,13 +525,13 @@ def build_operations(plan: PackPlan, existing_issues: list[dict[str, Any]],
     return operations
 
 
-class GhClient:
+class GhClient(object):
     """GhClient."""
     def __init__(self, repo: str) -> None:
         """Initialize the instance."""
         self.repo = repo
 
-    def run(self, args: list[str], payload: dict[str, Any] | None = None) -> Any:
+    def run(self, args: list[str], payload: dict[str, object] | None = None) -> object:
         """Run."""
         cmd = ["gh", *args]
         input_text = json.dumps(payload) if payload is not None else None
@@ -558,7 +558,7 @@ class GhClient:
             raise SystemExit(proc.stderr.strip() or proc.stdout.strip())
         return {row["name"] for row in json.loads(proc.stdout)}
 
-    def list_issues(self) -> list[dict[str, Any]]:
+    def list_issues(self) -> list[dict[str, object]]:
         """List issues."""
         proc = subprocess.run(
             ["gh", "issue", "list", "--repo", self.repo, "--state", "all",
@@ -571,7 +571,7 @@ class GhClient:
             raise SystemExit(proc.stderr.strip() or proc.stdout.strip())
         return json.loads(proc.stdout)
 
-    def list_milestones(self) -> list[dict[str, Any]]:
+    def list_milestones(self) -> list[dict[str, object]]:
         """List milestones."""
         return self.run(["api", f"repos/{self.repo}/milestones", "--paginate"]) or []
 
@@ -603,7 +603,7 @@ class GhClient:
         })
 
 
-def resolve_milestone_number(plan: PackPlan, milestones: list[dict[str, Any]]) -> tuple[int | None, bool]:
+def resolve_milestone_number(plan: PackPlan, milestones: list[dict[str, object]]) -> tuple[int | None, bool]:
     """Resolve milestone number."""
     if plan.milestone_number is not None:
         return plan.milestone_number, True

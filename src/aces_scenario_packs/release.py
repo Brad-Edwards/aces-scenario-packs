@@ -48,7 +48,6 @@ import re
 import shutil
 import sys
 import tempfile
-from typing import Any
 
 import yaml
 
@@ -126,7 +125,7 @@ def _resolved_within(base_real: str, *parts: str) -> str:
 # --------------------------------------------------------------------------
 # Pack contract loading
 # --------------------------------------------------------------------------
-class PackContracts:
+class PackContracts(object):
     """The committed contracts the release tool reads, loaded once per pack."""
 
     def __init__(self, pack_root: str) -> None:
@@ -139,7 +138,7 @@ class PackContracts:
         self.provenance = self._read_pointer(self.pack_yaml.get("provenance_ledger"))
         self.bundles = self._read(os.path.join("profiles", "bundles.yaml"))
 
-    def _read(self, rel: str) -> Any:
+    def _read(self, rel: str) -> object:
         """Read a pack-relative YAML file, validated at the open() sink."""
         try:
             path = _resolved_within(self._root_real, rel)
@@ -153,19 +152,19 @@ class PackContracts:
         except (OSError, yaml.YAMLError):
             return None
 
-    def _read_pointer(self, rel: Any) -> Any:
+    def _read_pointer(self, rel: object) -> object:
         """Read pointer."""
         return self._read(rel) if isinstance(rel, str) else None
 
     @property
-    def supported_bundles(self) -> list[dict[str, Any]]:
+    def supported_bundles(self) -> list[dict[str, object]]:
         """Supported bundles."""
         compat = self.compatibility or {}
         return [b for b in (compat.get("delivery_bundles") or [])
                 if isinstance(b, dict) and b.get("status") == "supported"]
 
     @property
-    def manifest_bundle_rows(self) -> dict[str, dict[str, Any]]:
+    def manifest_bundle_rows(self) -> dict[str, dict[str, object]]:
         """Manifest bundle rows."""
         rows = (self.bundles or {}).get("bundles") or []
         return {r.get("id"): r for r in rows if isinstance(r, dict) and r.get("id")}
@@ -209,7 +208,7 @@ def scan_tier_for_leaks(tier_dir: str) -> list[tuple[str, str]]:
 # Lint (AC1: fail fast when a supported bundle lacks shipped content)
 # --------------------------------------------------------------------------
 def _entry_failures(pack_root: str, name: str, bid: str, key: str,
-                    entries: Any) -> list[str]:
+                    entries: object) -> list[str]:
     """Entry failures."""
     out: list[str] = []
     for entry in entries or []:
@@ -223,9 +222,9 @@ def _entry_failures(pack_root: str, name: str, bid: str, key: str,
     return out
 
 
-def _lint_bundle(pc: "PackContracts", pack_root: str, bundle: dict[str, Any],
-                 manifest_rows: dict[str, dict[str, Any]],
-                 index_ids: set[Any]) -> list[str]:
+def _lint_bundle(pc: "PackContracts", pack_root: str, bundle: dict[str, object],
+                 manifest_rows: dict[str, dict[str, object]],
+                 index_ids: set[object]) -> list[str]:
     """Lint one supported delivery bundle against its shipped content."""
     bid = bundle.get("bundle_id")
     row = manifest_rows.get(bid)
@@ -362,8 +361,8 @@ def _resolve_release_paths(pc: "PackContracts", out_dir: str,
 
 
 def _stage_boundary_row(pc: "PackContracts", pack_root: str, group: str, tier: str,
-                        row: Any, staging: str,
-                        tier_stats: dict[str, dict[str, Any]]) -> list[str]:
+                        row: object, staging: str,
+                        tier_stats: dict[str, dict[str, object]]) -> list[str]:
     """Stage boundary row."""
     if not isinstance(row, dict):
         return []
@@ -386,8 +385,8 @@ def _stage_boundary_row(pc: "PackContracts", pack_root: str, group: str, tier: s
     return [f"{pc.name}: boundary {group} {err}" for err in stage_errors]
 
 
-def _stage_boundaries(pc: "PackContracts", pack_root: str, boundaries: Any,
-                      staging: str, tier_stats: dict[str, dict[str, Any]]) -> list[str]:
+def _stage_boundaries(pc: "PackContracts", pack_root: str, boundaries: object,
+                      staging: str, tier_stats: dict[str, dict[str, object]]) -> list[str]:
     """Stage boundaries."""
     if not isinstance(boundaries, dict):
         return []
@@ -400,7 +399,7 @@ def _stage_boundaries(pc: "PackContracts", pack_root: str, boundaries: Any,
 
 
 def build_release(pack_root: str, out_dir: str, *,
-                  include_build_provenance: bool = False) -> tuple[dict[str, Any], list[str]]:
+                  include_build_provenance: bool = False) -> tuple[dict[str, object], list[str]]:
     """Assemble the boundary-split release tree and its metadata.
 
     Returns ``(metadata, failures)``. The release tree is treated as an atomic
@@ -414,7 +413,7 @@ def build_release(pack_root: str, out_dir: str, *,
     """
     pc = PackContracts(pack_root)
     version = str(pc.pack_yaml.get("version") or "0.0.0")
-    tier_stats: dict[str, dict[str, Any]] = {
+    tier_stats: dict[str, dict[str, object]] = {
         tier: {"file_count": 0, "exports": {}} for tier in sorted(set(BOUNDARY_TIERS.values()))
     }
     metadata = release_metadata(pack_root, include_build_provenance=include_build_provenance)
@@ -456,7 +455,7 @@ def build_release(pack_root: str, out_dir: str, *,
 # --------------------------------------------------------------------------
 # Release metadata (AC4)
 # --------------------------------------------------------------------------
-def _tally(rows: Any, key: str) -> dict[str, int]:
+def _tally(rows: object, key: str) -> dict[str, int]:
     """Tally."""
     out: dict[str, int] = {}
     for row in rows or []:
@@ -465,16 +464,16 @@ def _tally(rows: Any, key: str) -> dict[str, int]:
     return out
 
 
-def _gate_status(review: dict[str, Any]) -> dict[str, Any]:
+def _gate_status(review: dict[str, object]) -> dict[str, object]:
     """Gate status."""
-    out: dict[str, Any] = {}
+    out: dict[str, object] = {}
     for gate in (review.get("gates") or []):
         if isinstance(gate, dict) and isinstance(gate.get("gate_id"), str):
             out[gate["gate_id"]] = gate.get("status")
     return out
 
 
-def _provenance_summary(ledger: Any) -> dict[str, Any]:
+def _provenance_summary(ledger: object) -> dict[str, object]:
     """A bounded, leak-safe projection of the provenance ledger.
 
     Counts and review-gate statuses only — never source/review prose, artifact
@@ -507,7 +506,7 @@ def _git_commit(repo_root: str) -> str | None:
 
 
 def release_metadata(pack_root: str, *, include_build_provenance: bool = False,
-                     repo_root: str = REPO) -> dict[str, Any]:
+                     repo_root: str = REPO) -> dict[str, object]:
     """Release metadata."""
     pc = PackContracts(pack_root)
     compat = pc.compatibility or {}
@@ -521,7 +520,7 @@ def release_metadata(pack_root: str, *, include_build_provenance: bool = False,
         if isinstance(rp, dict) and rp.get("status") in ("supported", "required")
         and rp.get("profile_id"))
 
-    metadata: dict[str, Any] = {
+    metadata: dict[str, object] = {
         "metadata_schema_version": METADATA_SCHEMA_VERSION,
         "pack": {
             "name": pc.name,
@@ -572,8 +571,8 @@ def bundle_participant_views(pack_root: str) -> dict[str, list[str]]:
     return views
 
 
-def _smoke_bundle(pc: "PackContracts", pack_root: str, bundle: dict[str, Any],
-                  rows: dict[str, dict[str, Any]]) -> list[str]:
+def _smoke_bundle(pc: "PackContracts", pack_root: str, bundle: dict[str, object],
+                  rows: dict[str, dict[str, object]]) -> list[str]:
     """Check one supported bundle's required entrypoints exist and that its
     operator entrypoints never sit under a participant root."""
     bid = bundle.get("bundle_id")

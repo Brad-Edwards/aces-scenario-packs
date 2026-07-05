@@ -65,9 +65,10 @@ class Operation(object):
 
 COMMON_ANCHORS = """\
 ## Contract Anchors
-- `scenarios/README.md`: authoritative scenario-pack convention and milestone structure.
-- `scenarios/_template/README.md`: build doctrine - offensive by default, one full scenario per pack, no stubs or
-  hand-waved services, and `golden` only after participant-equivalent proof.
+- The bundled layout contract (`contract/pack-layout.md` in the `aces-scenario-packs` package): authoritative
+  scenario-pack convention and milestone structure.
+- The bundled template (copied by `aces-new-pack`): build doctrine - offensive by default, one full scenario per
+  pack, no stubs or hand-waved services, and `golden` only after participant-equivalent proof.
 - `docs/scenario-packs.md`: pack metadata, provenance ledger, compatibility manifest, profile bundles, validation
   oracle, and release boundaries.
 - `docs/golden-readiness.md`: isolated golden infrastructure, automated rehearsal, final manual participant walkthrough,
@@ -137,9 +138,8 @@ def contract_body(plan: PackPlan) -> str:
     {pack_block(plan)}
     {COMMON_ANCHORS}
     ## Deliverables
-    - Create or link the real Ground Control DRAFT scenario requirement before stamping `pack.yaml.requirement`; do not
-      synthesize a UID.
-    - Scaffold `scenarios/{plan.pack_id}/` from `scenarios/_template/` with `aces-new-pack`.
+    - Set `pack.yaml.requirement` to your upstream requirement id if you track one, or `null`; do not synthesize a UID.
+    - Scaffold `scenarios/{plan.pack_id}/` from the bundled template with `aces-new-pack`.
     - Fill `pack.yaml`, `pack.compatibility.yaml`, and `docs/provenance-ledger.yaml` with truthful initial metadata.
     - Replace template prose in `README.md`, `docs/concepts.md`, `docs/attack-path.md`, and `docs/lineage.md`.
     - Record source adaptation decisions: what is used, excluded, changed, or locally designed.

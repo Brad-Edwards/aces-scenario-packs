@@ -1,13 +1,14 @@
 # Pack Issue Skeleton Script
 
-Use `scripts/create_scenario_pack_issue_skeleton.py` at the start of a new
-scenario-pack effort. It creates the standard top-level GitHub issues that a
-pack-design agent can then edit, refine, and split into child issues.
+`aces-pack-issue-skeleton` creates the standard top-level GitHub issues for a new
+scenario-pack effort, so you start from a consistent set to edit, refine, and
+split into child issues. It is a GitHub issue helper only — it does not scaffold
+files; use `aces-new-pack` for the pack source skeleton.
 
-The script defaults to dry-run mode:
+It defaults to dry-run, so you can review the plan before anything is created:
 
 ```sh
-python3 scripts/create_scenario_pack_issue_skeleton.py \
+aces-pack-issue-skeleton \
   --pack-id example-pack \
   --title "Example Pack" \
   --milestone-title "Scenario pack: Example Pack" \
@@ -15,10 +16,11 @@ python3 scripts/create_scenario_pack_issue_skeleton.py \
   --focus "One sentence describing what the participant does."
 ```
 
-Apply only after the dry-run output is correct:
+Add `--apply` (and `--create-milestone` for a new milestone) once the dry-run
+output looks right:
 
 ```sh
-python3 scripts/create_scenario_pack_issue_skeleton.py \
+aces-pack-issue-skeleton \
   --pack-id example-pack \
   --title "Example Pack" \
   --milestone-title "Scenario pack: Example Pack" \
@@ -28,10 +30,10 @@ python3 scripts/create_scenario_pack_issue_skeleton.py \
   --apply
 ```
 
-If the milestone already exists, pass its number:
+If the milestone already exists, pass its number instead:
 
 ```sh
-python3 scripts/create_scenario_pack_issue_skeleton.py \
+aces-pack-issue-skeleton \
   --pack-id example-pack \
   --title "Example Pack" \
   --milestone-number 42 \
@@ -50,19 +52,15 @@ The skeleton issues are:
 - final manual participant walkthrough
 - final docs, status, evidence, and teardown reconciliation
 
-Re-running the script skips existing skeleton issues by title so it does not
-overwrite an agent's edits. Pass `--refresh-existing` only when you intentionally
-want to reapply the current template body to existing skeleton issues.
+Re-running skips existing skeleton issues by title, so it won't overwrite edits.
+Pass `--refresh-existing` only when you deliberately want to reapply the current
+template body to existing skeleton issues.
 
 Extra labels are applied only if they already exist in the repository:
 
 ```sh
-python3 scripts/create_scenario_pack_issue_skeleton.py \
+aces-pack-issue-skeleton \
   --pack-id example-pack \
   --milestone-number 42 \
   --label scenario:example-pack
 ```
-
-This script is a GitHub issue setup helper; it does not scaffold files and does
-not run the full Ground Control `/implement` workflow. Use
-`aces-new-pack` separately for the pack source skeleton.

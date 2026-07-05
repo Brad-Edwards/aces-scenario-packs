@@ -177,14 +177,14 @@ def scaffold_pack(repo: str, pack_id: str, title: str, description: str,
 def parse_args(argv: list[str]) -> argparse.Namespace:
     """Parse args."""
     parser = argparse.ArgumentParser(
-        description="Create scenarios/<pack-id>/ from scenarios/_template.")
+        description="Create scenarios/<pack-id>/ from the bundled template.")
     parser.add_argument("pack_id", help="lowercase kebab-case scenario pack id")
     parser.add_argument("--title", help="human-readable title")
     parser.add_argument(
         "--description",
         default="One line: what the scenario is and what the player does.",
         help="one-line pack description for pack.yaml")
-    parser.add_argument("--requirement", help="Ground Control requirement UID")
+    parser.add_argument("--requirement", help="optional upstream requirement id")
     parser.add_argument("--issue", type=int, help="GitHub issue number")
     parser.add_argument("--repo", help="repository root; defaults to auto-detect")
     return parser.parse_args(argv)

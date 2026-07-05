@@ -20,9 +20,9 @@ so every present and future pack benefits:
   5. **Golden checklist** — every pack carries
      ``docs/golden-readiness-checklist.md`` so final manual participant review
      is planned and auditable.
-  6. **Shared oracle model** — the reusable operator/oracle-only model under
-     ``scenarios/_oracle`` validates its fixtures and tests without being
-     treated as a scenario pack.
+  6. **Shared oracle model** — the reusable operator/oracle-only model bundled
+     with this package validates its fixtures and tests without being treated as
+     a scenario pack.
 
 Stdlib + PyYAML only. Run locally exactly as CI does:
 
@@ -96,12 +96,9 @@ def provenance_example_path() -> str:
     """Provenance example path."""
     return os.path.join(_TEMPLATE_DIR, "docs", "provenance-ledger.example.yaml")
 
-# Packs are scenarios/<name>/ with a pack.yaml. _template is a scaffold, not a
-# pack; design-notes is shared prose. `polaris` is the legacy NORTHSTORM
-# scenario that predates the pack convention (its own layout: content-packages/,
-# briefing-deck/, no sdl/ validators) — migrating it to the pack contract is
-# separate work, so this convention-based gate skips it for now.
-SKIP = {"_template", "_oracle", "design-notes", "polaris"}
+# Packs are scenarios/<name>/ with a pack.yaml. `_template` is a scaffold and
+# `_oracle` is the shared oracle model, not packs; the gate skips both.
+SKIP = {"_template", "_oracle"}
 
 # Operator tokens that must never reach participant-facing surfaces.
 TOKEN_PATTERNS = [

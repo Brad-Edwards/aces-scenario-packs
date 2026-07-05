@@ -1,30 +1,44 @@
 name: PR Title
 
-# Enforce Conventional Commit PR titles (ADR 0006). Feature PRs are squash-merged,
-# so the PR title becomes the single commit on the branch — this is what feeds the
-# version + release decision python-semantic-release makes on main. A PR whose
-# title is not a valid conventional type cannot merge (make this a required check
-# on dev and main), so the release contract can't be bypassed or forgotten.
+# Repository-side PR title guard (ADR 0006). Enforces the Conventional Commit
+# shape python-semantic-release reads, and bans agent/tool advertising prefixes
+# (e.g. `[claude] ...`). Enforced by repo automation, not only agent
+# instructions. No `dev` exemption. Make "PR title guard" a required check on
+# dev and main so the release contract can't be bypassed or forgotten.
+#
+# The PR title is untrusted event data: the checker reads it from
+# $GITHUB_EVENT_PATH (never shell-interpolated), the token is read-only, and this
+# uses `pull_request` (never `pull_request_target`). It checks out the BASE ref
+# so a PR cannot weaken its own guard by editing tools/check_pr_title.py; the
+# same validator is exercised against the PR's own code by tests/ in ci.yml.
 on:
   pull_request:
-    types:
-      - opened
-      - edited
-      - synchronize
-      - reopened
-    branches:
-      - dev
-      - main
+    types: [opened, edited, synchronize, reopened]
 
 permissions:
-  pull-requests: read
+  contents: read
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  conventional-title:
-    name: Conventional PR title
+  pr-title-guard:
+    name: PR title guard
     runs-on: ubuntu-latest
     steps:
+      - name: Check out base ref (trusted policy copy)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Validate PR title
-        uses: amannn/action-semantic-pull-request@v5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ! -f tools/check_pr_title.py ]; then
+            echo "::notice::tools/check_pr_title.py is not on the base ref yet; skipping (bootstrap for the PR that introduces the guard). Enforcement is active for every subsequent PR."
+            exit 0
+          fi
+          python tools/check_pr_title.py

@@ -113,19 +113,31 @@ and is the manual override escape hatch.
 
 ### 4. Enforcement — a required CI gate on the PR title
 
-This is what makes it inescapable. A `pull_request` check validates the PR title
-is a Conventional Commit type; combined with **squash-merge**, the title becomes
-the one commit on `dev`, so conventional messages always reach `main`.
+This is what makes it inescapable. A `pull_request` check validates the PR title;
+combined with **squash-merge**, the title becomes the one commit on `dev`, so
+conventional messages always reach `main`.
+
+Use **one repo-local, stdlib-only validator** as the single policy seam —
+`tools/check_pr_title.py` — called by both the workflow and the test suite, so the
+policy can't drift between YAML and tests. The workflow checks out the **base
+ref** so a PR can't weaken its own guard by editing the checker, reads the title
+from `$GITHUB_EVENT_PATH` (untrusted event data — never shell-interpolated), and
+needs no third-party action. The validator enforces the Conventional Commit shape
+with the type set python-semantic-release parses, and also **bans agent/tool
+advertising prefixes** (`[claude]`, `[codex]`, `[openai]`, `[chatgpt]`).
 
 ```yaml
 # .github/workflows/pr-title.yml
-on: { pull_request: { types: [opened, edited, synchronize, reopened], branches: [dev, main] } }
-permissions: { pull-requests: read }
-# job: amannn/action-semantic-pull-request@v5
+on: { pull_request: { types: [opened, edited, synchronize, reopened] } }
+permissions: { contents: read }
+# job "PR title guard": checkout base.sha -> setup-python -> python tools/check_pr_title.py
 ```
 
-Make this check **required** on `dev` (and `main`) so a non-conforming PR cannot
-merge — the enforcement does not depend on any agent or workflow remembering.
+Make the **`PR title guard`** check **required** on `dev` (and `main`) so a
+non-conforming PR cannot merge — the enforcement does not depend on any agent or
+workflow remembering. Keep `tools/check_pr_title.py`'s type list in sync with
+`.ground-control.yaml` `workflow.pr_title.types` (the agent-side /implement Step 9
+check).
 
 ### 5. Repo settings
 

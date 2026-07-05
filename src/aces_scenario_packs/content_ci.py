@@ -38,6 +38,8 @@ import sys
 
 import yaml
 
+from collections.abc import Iterator
+
 # Canonical contract resources ship inside this installed package (schemas,
 # template, oracle fixtures + model). They are resolved relative to the package,
 # never the consumer's working tree.
@@ -206,7 +208,7 @@ def check_tests(failures: list[str]) -> None:
                 print(f"  [ok] {tag} ({r.stderr.strip().splitlines()[-1] if r.stderr else 'ok'})")
 
 
-def _iter_text_files(root: str):
+def _iter_text_files(root: str) -> Iterator[str]:
     """Yield every text-extension file under ``root`` (recursive)."""
     for dirpath, _dirs, files in os.walk(root):
         for name in files:
@@ -538,7 +540,7 @@ def _path_inside_pack(pack_root: str, rel_path: str) -> bool:
     return os.path.commonpath([root, target]) == root
 
 
-def _iter_path_fields(value: object, path: str = "$"):
+def _iter_path_fields(value: object, path: str = "$") -> Iterator[tuple[str, object]]:
     """Iter path fields."""
     if isinstance(value, dict):
         for key, child in value.items():
@@ -580,7 +582,7 @@ EXPOSED_BOUNDARY_GROUPS = ("participant_visible", "operator_only", "commercial")
 PRIVATE_BOUNDARY_EXPORTS = {"oracle", "private"}
 
 
-def _iter_boundary_rows(boundaries: dict[str, object], group: str):
+def _iter_boundary_rows(boundaries: dict[str, object], group: str) -> Iterator[dict[str, object]]:
     """Iter boundary rows."""
     rows = boundaries.get(group, [])
     if not isinstance(rows, list):
@@ -612,7 +614,7 @@ def _private_boundary_paths(boundaries: dict[str, object]) -> list[str]:
     return private_paths
 
 
-def _iter_exposed_boundary_paths(boundaries: dict[str, object]):
+def _iter_exposed_boundary_paths(boundaries: dict[str, object]) -> Iterator[tuple[str, str]]:
     """Iter exposed boundary paths."""
     for group in EXPOSED_BOUNDARY_GROUPS:
         for row in _iter_boundary_rows(boundaries, group):
@@ -998,7 +1000,8 @@ def check_provenance(failures: list[str]) -> None:
     for pack in _packs():
         pack_yaml_path = os.path.join(SCEN, pack, PACK_MANIFEST_FILE)
         if not os.path.isfile(pack_yaml_path):
-            continue  # check_manifest already reports the missing pack manifest
+            # check_manifest already reports the missing pack manifest
+            continue
         pack_yaml = _load_yaml(pack_yaml_path, failures, "manifest")
         if not isinstance(pack_yaml, dict):
             continue

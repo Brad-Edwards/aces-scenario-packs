@@ -54,7 +54,7 @@ import yaml
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
-import content_ci as cc  # noqa: E402  (sibling helper module)
+import content_ci as cc  # sibling helper module (imported after the sys.path insert above)
 
 REPO = cc._REPO
 SCEN = cc.SCEN
@@ -252,7 +252,8 @@ def lint_pack(pack_root: str) -> list[str]:
     pc = PackContracts(pack_root)
     supported = pc.supported_bundles
     if not supported:
-        return []  # nothing claimed supported -> nothing to ship
+        # nothing claimed supported -> nothing to ship
+        return []
 
     failures: list[str] = []
     contents = pc.pack_yaml.get("contents") or {}
@@ -425,7 +426,8 @@ def build_release(pack_root: str, out_dir: str, *,
 
     if os.path.exists(staging):
         shutil.rmtree(staging)
-    os.makedirs(staging)  # validated path; creates the resolved out_dir as a parent
+    # validated path; creates the resolved out_dir as a parent
+    os.makedirs(staging)
     try:
         boundaries = (pc.compatibility or {}).get("artifact_boundaries")
         failures += _stage_boundaries(pc, pack_root, boundaries, staging, tier_stats)

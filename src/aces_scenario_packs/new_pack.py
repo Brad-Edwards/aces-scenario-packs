@@ -16,6 +16,7 @@ import re
 import shutil
 import sys
 from pathlib import Path
+from collections.abc import Iterator
 
 PACK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
 README_FILE = "README.md"
@@ -79,7 +80,7 @@ def checked_pack_root(pack_root: str) -> Path:
 
 
 @contextlib.contextmanager
-def pack_root_cwd(pack_root: str):
+def pack_root_cwd(pack_root: str) -> Iterator[None]:
     """Pack root cwd."""
     root = checked_pack_root(pack_root)
     original = os.getcwd()

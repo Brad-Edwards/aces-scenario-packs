@@ -1,9 +1,0 @@
-{
-  "packId": "aces-example-pack",
-  "profile": {
-    "name": "portable-default",
-    "description": "Portable runtime expectations resolvable without private infrastructure.",
-    "portable": true,
-    "requires": ["aces-sdl-runtime"]
-  }
-}

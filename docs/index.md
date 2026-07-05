@@ -1,18 +1,21 @@
-# Documentation Index
+# ACES Scenario Packs — Definition & Tooling
 
-- [Scenario packs — definition](scenario-packs.md)
-- [ACES scenario-pack contract](../contracts/scenario-pack-contract.md)
-- [Repository charter](repository-charter.md)
-- [Migration planning](migration-plan.md)
-- [Documentation scrub policy](scrub-policy.md)
-- [Authoring and capture boundary](authoring-boundary.md)
-- [Authoring and tooling ownership plan](authoring-tooling-ownership.md)
-- [Capture workflow placement decision](capture-workflow-placement.md)
-- [Schema design guardrails](schema-design-guardrails.md)
-- [Tooling design guardrails](tooling-design-guardrails.md)
-- [Runtime visibility design guardrails](runtime-visibility-design-guardrails.md)
-- [Scenario-pack schemas](../schemas/README.md)
-- [Tracking issues](tracking-issues.md)
-- [Versioning and release policy](versioning.md)
-- [Branch protection expectations](branch-protection.md)
-- [Architecture decision records](decisions/adrs/README.md)
+The canonical, shared home for the ACES scenario-pack **definition**, schemas,
+template, and authoring tools. Actual scenario packs live in their own catalog
+repositories and consume this contract; this repo does not host packs.
+
+## Definition
+
+- [Scenario packs — what a pack is](scenario-packs.md)
+- Pack layout contract: [`scenarios/README.md`](../scenarios/README.md)
+- Schemas: [`scenarios/provenance.schema.yaml`](../scenarios/provenance.schema.yaml),
+  [`scenarios/pack-compatibility.schema.yaml`](../scenarios/pack-compatibility.schema.yaml)
+- Template pack: [`scenarios/_template/`](../scenarios/_template/)
+- Shared oracle model: [`scenarios/_oracle/`](../scenarios/_oracle/)
+- [Golden readiness](golden-readiness.md)
+
+## Tools
+
+- [Create a new pack (`new_scenario_pack.py`)](new-pack-script.md)
+- [Pack issue skeleton generator](pack-issue-skeleton-script.md)
+- Content validation / release gates: [`scripts/ci/`](../scripts/ci/)

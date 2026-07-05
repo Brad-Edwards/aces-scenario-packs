@@ -1,6 +1,0 @@
-{
-  "packId": "aces-example-pack",
-  "roots": [
-    {"path": "../escape", "visibility": "operator-only", "note": "Path escapes the pack root."}
-  ]
-}

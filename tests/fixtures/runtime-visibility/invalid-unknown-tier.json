@@ -1,6 +1,0 @@
-{
-  "packId": "aces-example-pack",
-  "roots": [
-    {"path": "brief/", "visibility": "top-secret", "note": "Not a defined runtime-visibility tier."}
-  ]
-}

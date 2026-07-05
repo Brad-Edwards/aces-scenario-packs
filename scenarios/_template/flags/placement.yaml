@@ -1,0 +1,14 @@
+# Placement map — the one structured contract between flags and assets.
+# One entry per flag, keyed by a stable flag_id reused in challenges/.
+# See ../../README.md#placement-map for the full rules.
+#
+# source is one of: value | generator | instructions
+# Populate exactly the matching field (value | generator | instructions).
+
+flags: []
+  # - flag_id: example-flag
+  #   source: value
+  #   value: "PEN{replace_me}"
+  #   host: some-host          # an asset/host in the SDL start state
+  #   path: /path/on/host      # where the value lands
+  #   note: optional human note

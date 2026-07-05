@@ -1,46 +1,47 @@
 # ACES Scenario Packs
 
-ACES Scenario Packs is the companion repository for defining, authoring,
-validating, and packaging ACES-native scenario packs.
+The canonical, shared home for the **ACES scenario-pack definition** and the
+**authoring / validation tooling** that goes with it. It exists so the pack
+contract and tools are a standard resource, independent of any single catalog of
+actual packs.
 
-This repository is intended to make scenario-pack adoption independent of any
-single downstream catalog implementation. It will hold the public pack contract,
-templates, schemas, validation tooling, authoring guidance, examples, migration
-guides, and workflow notes that help a team build a pack that uses ACES
-semantics.
+This repository does **not** host scenario packs. Packs live in their own
+catalog repositories and consume this contract.
 
-## Current Status
+## What's here
 
-This repository has been bootstrapped for planning and migration tracking. The
-public [scenario-pack contract](contracts/scenario-pack-contract.md) has landed
-as normative documentation; migrated schemas, tools, and example packs are not
-here yet. Those work items are tracked as GitHub issues in this repository and
-in the ACES core repository.
+- **Definition**
+  - [`docs/scenario-packs.md`](docs/scenario-packs.md) — what a scenario pack is.
+  - [`scenarios/README.md`](scenarios/README.md) — the pack layout contract.
+  - [`scenarios/provenance.schema.yaml`](scenarios/provenance.schema.yaml) and
+    [`scenarios/pack-compatibility.schema.yaml`](scenarios/pack-compatibility.schema.yaml) — the schemas.
+  - [`scenarios/_template/`](scenarios/_template/) — the template pack an author copies.
+  - [`scenarios/_oracle/`](scenarios/_oracle/) — the shared validation-oracle model.
+- **Tools** (`scripts/`)
+  - `new_scenario_pack.py` — scaffold a new pack from the template.
+  - `create_scenario_pack_issue_skeleton.py` — generate a pack work issue skeleton.
+  - `ci/scenario_content_ci.py` — content/definition validation gate.
+  - `ci/pack_release.py` — boundary-split build, lint, release, and profile-smoke gate.
 
-## Repository Boundaries
+## Boundary
 
-- ACES core defines the Scenario Definition Language and runtime-independent
-  semantic contracts.
-- This repository defines how an ACES scenario pack is structured, authored,
-  validated, released, and adopted.
-- Downstream catalogs consume the pack contract and may add private runtime,
-  delivery, class-management, or product integrations outside the canonical pack
-  contract.
-- Capture and inventory work is split by responsibility (see
-  [ADR 0004](docs/decisions/adrs/0004-capture-workflow-placement.md)):
-  ACES-semantic capture stays in ACES core, pack-authoring capture support is
-  adopted here only on a linked issue, and runtime capture stays downstream. No
-  capture asset is moved before its linked follow-up records a placement.
+- **ACES core** owns the Scenario Definition Language (SDL) and its semantics.
+- **This repository** owns how a scenario pack is structured, authored,
+  validated, and released — plus the tools that enforce it.
+- **Downstream catalogs** hold the actual packs and any private runtime,
+  delivery, or product integrations.
 
-## Initial Surfaces
+## Development
 
-- [Scenario-pack contract](contracts/scenario-pack-contract.md)
-- [Repository charter](docs/repository-charter.md)
-- [Migration planning](docs/migration-plan.md)
-- [Authoring and capture boundary](docs/authoring-boundary.md)
-- [Contracts placeholder](contracts/README.md)
-- [Schemas placeholder](schemas/README.md)
-- [Templates placeholder](templates/README.md)
-- [Tools placeholder](tools/README.md)
-- [Examples placeholder](examples/README.md)
+```sh
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
 
+# gates (see .github/workflows/ci.yml)
+python3 -m unittest discover -s scripts/ci/tests
+python3 scripts/ci/scenario_content_ci.py
+python3 scripts/ci/pack_release.py check --all
+```
+
+Licensed under the MIT License (see [`LICENSE`](LICENSE)).

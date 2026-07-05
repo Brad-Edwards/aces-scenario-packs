@@ -3,16 +3,15 @@ project: aces-scenario-packs
 github_repo: Brad-Edwards/aces-scenario-packs
 short_code: ASP
 workflow:
-  test_command: python3 -m unittest discover -s tests
-  completion_command: python3 -m unittest discover -s tests
-  lint_command: python3 -m compileall tests
-  format_command: python3 -m compileall tests
+  test_command: python3 -m unittest discover -s scripts/ci/tests
+  completion_command: python3 -m unittest discover -s scripts/ci/tests && python3 scripts/ci/scenario_content_ci.py && python3 scripts/ci/pack_release.py check --all
+  lint_command: python3 -m compileall scripts scenarios
+  format_command: python3 -m compileall scripts scenarios
 docs:
-  adr_dir: docs/decisions/adrs/
-  workflow_reference: docs/repository-charter.md
+  workflow_reference: docs/scenario-packs.md
 example_paths:
-  source: tools/
-  test: tests/
+  source: scripts/
+  test: scripts/ci/tests/
 requirements:
   uid_examples:
     - ASP-0001
@@ -20,17 +19,15 @@ requirements:
 sonarcloud:
   project_key: Brad-Edwards_aces-scenario-packs
   organization: brad-edwards
-rules:
-  plan_rules: .gc/plan-rules.md
 architecture:
   vocabulary:
     patterns:
       - name: Companion contract repository
-        applies_to: scenario-pack specification and adoption support
-        example_path: docs/repository-charter.md
+        applies_to: scenario-pack definition and authoring tooling
+        example_path: docs/scenario-packs.md
     boundary_contract:
-      description: ACES core owns SDL semantics; this repository owns scenario-pack structure, validation, templates, and adoption guidance.
+      description: ACES core owns SDL semantics; this repository owns the scenario-pack definition, schemas, template, and authoring/validation tooling. It does not host actual scenario packs.
     binding_adrs: []
     anti_recommendations:
-      - Do not move capture workflow assets before the ownership review is resolved.
+      - Do not host actual scenario packs here; this repo is the definition and tooling only.
       - Do not encode downstream catalog vocabulary into canonical pack terminology.

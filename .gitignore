@@ -9,9 +9,6 @@ dist/
 build/
 .DS_Store
 
-# hatch-vcs writes this at build time; the git tag is the version source of truth
-src/aces_scenario_packs/_version.py
-
 # Ground Control operational artifacts (not workflow state)
 .gc/sonar/
 .gc/telemetry/

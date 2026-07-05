@@ -11,4 +11,5 @@ once accepted; a later ADR supersedes an earlier one rather than editing it.
 | [0003](0003-build-and-release-model.md) | Build and release model | Accepted |
 | [0004](0004-sbom-and-supply-chain.md) | SBOM and supply-chain provenance | Accepted |
 | [0005](0005-automatic-release-on-merge-to-main.md) | Automatic release on merge to main (amends 0003) | Superseded by 0006 |
-| [0006](0006-conventional-commit-releases.md) | Conventional-commit-driven automatic releases (reusable blueprint) | Accepted |
+| [0006](0006-conventional-commit-releases.md) | Conventional-commit-driven automatic releases (reusable blueprint) | Versioning superseded by 0007 |
+| [0007](0007-changelog-driven-versioning.md) | Changelog-driven versioning (reusable blueprint) | Accepted |

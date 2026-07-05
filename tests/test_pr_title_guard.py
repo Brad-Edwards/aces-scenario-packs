@@ -7,7 +7,9 @@ policy can't drift between the workflow YAML and local enforcement (ADR 0006).
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -60,6 +62,21 @@ class PrTitleGuardTests(unittest.TestCase):
 
     def test_main_rejects_via_title_arg(self):
         self.assertEqual(guard.main(["--title", "[claude] nope"]), 1)
+
+    def _event(self, title, login):
+        fh = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8")
+        json.dump({"pull_request": {"title": title, "user": {"login": login}}}, fh)
+        fh.close()
+        return fh.name
+
+    def test_event_path_validates_human_titles(self):
+        self.assertEqual(guard.main(["--event-path", self._event("feat: ok", "someone")]), 0)
+        self.assertEqual(guard.main(["--event-path", self._event("nope", "someone")]), 1)
+
+    def test_bot_authors_are_exempt(self):
+        # A non-conforming title from a bot author is skipped, not rejected.
+        path = self._event("Bump PyYAML from 6.0 to 6.0.1", "dependabot[bot]")
+        self.assertEqual(guard.main(["--event-path", path]), 0)
 
 
 if __name__ == "__main__":

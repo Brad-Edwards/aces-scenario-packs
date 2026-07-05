@@ -1,20 +1,17 @@
 # Scenario pack convention
 
-**Scenario-pack contract version:** `1` (transitional local convention)
+**Scenario-pack contract version:** `1`
 
-This directory is the catalog of **scenario packs**. This document is the
-authoritative layout convention every pack follows. It refines the package
-contract requirement **PEN-0001** ([issue #119][issue]).
+This document is the authoritative layout convention every ACES scenario pack
+follows. It ships inside the `aces-scenario-packs` package alongside the schemas,
+template, and tools that enforce it, so an author always validates against the
+same contract version they build against.
 
-Public scenario-pack format authority now belongs in the companion repository
-[`Brad-Edwards/aces-scenario-packs`](https://github.com/Brad-Edwards/aces-scenario-packs).
-This repo is the private content factory and golden-evidence home: it authors
-scenario content, proves that content on live golden ranges, keeps private
-validation evidence, and exports packs once they can conform to the central
-contract. Until central v1 ships, this document and the local schemas are
-ACES's private stand-in convention. Do not extend them to define new public
-schema semantics; record mapping and deltas in
-[`docs/central-contract-adoption.md`](../docs/central-contract-adoption.md).
+Scenario packs themselves live in their own catalog repositories: this package
+**defines and validates** the format, it does not host packs. Everything below
+describes the `scenarios/<name>/` layout an author creates in a catalog repo, and
+`aces-pack-validate` / `aces-pack-release` check that layout against this
+contract.
 
 > First-pass rule of thumb: **put in what a scenario has, skip what it
 > doesn't.** A pack is a declarative bundle plus one known-good reference — it
@@ -64,8 +61,9 @@ scenarios/<name>/
   profiles/       # delivery/audience bundles (guided, unguided, purple, …)
 ```
 
-A scaffold of this layout, with annotated placeholders, lives in
-[`_template/`](_template/). Copy it to start a new pack.
+A scaffold of this layout, with annotated placeholders, ships in the package
+[`template/`](../template/); run `aces-new-pack <id>` to copy it into your
+catalog and start a new pack.
 
 ### Pack metadata (`pack.yaml`)
 
@@ -75,9 +73,9 @@ This is *catalog/provenance* metadata, not a runtime contract — it pins nothin
 about how a consumer builds or runs the pack (see
 [not in scope](#explicitly-not-in-scope)). See [Placement map](#placement-map)
 and [Challenges](#challenges) for the structured contracts; `pack.yaml` is just
-the pack's identity. If a pack is created from a GitHub issue with no formal
-Ground Control requirement, set `requirement: null` and cite the issue in the
-pack README or lineage; never invent a requirement UID.
+the pack's identity. If you don't track packs against an upstream requirement id,
+set `requirement: null` and cite the originating issue in the pack README or
+lineage instead; never invent a requirement id.
 
 ```yaml
 # pack.yaml
@@ -89,7 +87,7 @@ description: "One line: what the scenario is and what the player does."
 authors:
   - Name <email>                 # who authored it
 license: "© 2026 Example Org. All rights reserved."
-requirement: null                # GC requirement UID, or null for issue-only packs
+requirement: null                # optional upstream tracking id, or null
 contents:                        # which optional layers ship; required ones are implicit
   flag_layer: false              # flags/ + challenges/ + ctfd/
   reference_triangle: false      # build/ + tests/ + docs/walkthroughs/
@@ -110,7 +108,7 @@ ships under different terms.
 required source/licensing/safety/publication contract) and **may** point at
 `compatibility_manifest: pack.compatibility.yaml`. The compatibility manifest is
 the richer product compatibility projection validated by
-[`pack-compatibility.schema.yaml`](pack-compatibility.schema.yaml). It does not
+[`pack-compatibility.schema.yaml`](../schemas/pack-compatibility.schema.yaml). It does not
 replace SDL, topology, scoring, telemetry, profile, build, reset, or CTFd
 ledgers. It indexes them for catalog and commercial-package consumers.
 
@@ -122,10 +120,8 @@ contract beyond identity metadata. The manifest must be static source metadata:
 it cannot discover cloud state, call CTFd, run Terraform, emit telemetry, or
 store mutable proof.
 
-The compatibility manifest is a local transitional projection until the central
-contract supplies its public v1 schema. Treat it as mapping input and delta
-evidence for central adoption, not as a local place to finish or fork the public
-contract.
+Keep the manifest to static, checkable metadata: it indexes the pack's other
+ledgers for catalog and product consumers, it does not redefine or replace them.
 
 The manifest defines:
 
@@ -171,15 +167,14 @@ predicates, and reset internals.
 references it from `pack.yaml` (`provenance_ledger: docs/provenance-ledger.yaml`);
 the `aces-pack-validate` gate enforces its
 presence and validates it against
-[`provenance.schema.yaml`](provenance.schema.yaml). It is the source of truth for
+[`provenance.schema.yaml`](../schemas/provenance.schema.yaml). It is the source of truth for
 **where content came from, what may be done with it, whether it is safe to ship,
 and whether it has been cleared to publish.** `docs/lineage.md` stays human prose
 and cites the ledger. A worked example is
-[`_template/docs/provenance-ledger.example.yaml`](_template/docs/provenance-ledger.example.yaml).
+[`template/docs/provenance-ledger.example.yaml`](../template/docs/provenance-ledger.example.yaml).
 
-The provenance schema is also a transitional local gate. It remains required for
-private content safety and publication review, and future central exports map
-from it rather than bypassing it.
+The provenance schema is enforced for every pack: it is the content-safety and
+publication-review gate, and pack exports carry it rather than bypassing it.
 
 The ledger has four parts:
 
@@ -214,10 +209,10 @@ includes customer-specific material.
 
 ### Shared validation oracle model
 
-Reusable oracle authoring guidance and fixture validation live in
-[`_oracle/`](_oracle/). This directory is shared operator/oracle-only source,
-not a scenario pack, and `aces-pack-validate` validates it through
-a dedicated shared-oracle gate.
+Reusable oracle authoring guidance and fixture validation ship in the package
+[`oracle/`](../oracle/) model. It is shared operator/oracle-only source, not a
+scenario pack, and `aces-pack-validate` validates it through a dedicated
+shared-oracle gate.
 
 Pack-local files remain the source of truth for a scenario's hidden path and
 proof: `docs/attack-path.md`, `docs/scenario-design.md`, `docs/oracle-map.md`,
@@ -328,12 +323,6 @@ doesn't (a pure-emulation scenario may have neither).
     `pack.compatibility.yaml.delivery_bundles` rows with pack-local manifest,
     participant path, operator path, and validation references.
 
-  The APT29 emulation pack is the concrete example:
-  [`apt29/profiles/bundles.yaml`](apt29/profiles/bundles.yaml) declares the five
-  standard bundles and
-  [`apt29/profiles/validate_profiles.py`](apt29/profiles/validate_profiles.py)
-  validates them without deploying the range.
-
 ## The reference triangle (build → test → walkthrough)
 
 `build/`, `tests/`, and `docs/walkthroughs/` are one coherent reference, all
@@ -346,9 +335,9 @@ pointed at the same **golden AWS range**:
    paths.
 
 A range builder gets a known-good build, automated verification of it, and a
-matching walkthrough — so when they decompose the pack into their own system
-(Shifter-style), they have a reference to validate against path-by-path. AWS is
-assumed for both the golden build and its tests.
+matching walkthrough — so when they decompose the pack into their own range
+system, they have a reference to validate against path-by-path. AWS is assumed
+for both the golden build and its tests.
 
 ### Participant-equivalent golden ranges
 
@@ -483,7 +472,7 @@ flags:
     source: instructions              # no shippable value; how to produce it
     instructions: docs/walkthroughs/a7-gitea.md#restore-the-schematic
     host: boreas-intranet
-    path: /data/git/aurora/schematic.kicad
+    path: /data/git/acme/schematic.kicad
 ```
 
 Rules:
@@ -528,8 +517,8 @@ views from the contracts above — it never stands up a range, calls a cloud/CTF
 Terraform/Docker API, mutates state, or uploads. It runs in or behind the
 existing scenario-content gate (`aces-pack-validate`); a pack is
 **releasable** when it ships a `pack.compatibility.yaml` with
-`artifact_boundaries`. `polaris/` and packs without a compatibility manifest are
-explicit skips, never a silent partial release.
+`artifact_boundaries`. Packs without a compatibility manifest are explicit
+skips, never a silent partial release.
 
 - **Lint (fail fast).** A pack must not advertise a delivery bundle it does not
   ship. Every `pack.compatibility.yaml.delivery_bundles[].status: supported` row
@@ -558,10 +547,6 @@ explicit skips, never a silent partial release.
   runtime profiles, and a bounded provenance summary (counts and review-gate
   statuses only — never source/review prose or oracle vocabulary).
 
-  This metadata currently pins the transitional local convention. Add central
-  contract source/version/digest metadata only after the companion repository
-  publishes central v1 and defines the release field shape.
-
 Run it locally exactly as CI does:
 
 ```
@@ -585,13 +570,4 @@ runtime engines. `pack.yaml` records what the pack *is* for the catalog and for
 humans. `pack.compatibility.yaml` tells a consumer what the pack exposes and
 requires, but it still does not build, resolve, score, observe, or run the pack.
 
-## Existing scenarios
-
-`polaris/` predates this convention and uses an earlier shape (`design/`,
-`briefing-deck/`, `content-packages/`); it is not retrofitted by the document
-that introduced this convention, and migrating it to this layout is separate
-per-scenario work. The other packs — `aurora/`, `apt29/`, `fin7-carbanak/` —
-follow this convention. New packs start from [`_template/`](_template/).
-
-[issue]: https://github.com/Brad-Edwards/aces-scenario-packs/issues/119
-[aces-sdl]: https://github.com/PaloAltoNetworks/shifter
+[aces-sdl]: https://github.com/Brad-Edwards/aces

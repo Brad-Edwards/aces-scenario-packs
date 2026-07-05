@@ -7,4 +7,4 @@ timeline if the scenario has them. **Required** — every pack has a start state
 - Add a small `<name>-demo-minimal.sdl.yaml` variant if you want a smoke
   variant for fast verification.
 
-[aces-sdl]: https://github.com/PaloAltoNetworks/shifter
+[aces-sdl]: https://github.com/Brad-Edwards/aces

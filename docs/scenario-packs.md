@@ -4,18 +4,16 @@ A scenario pack is declarative content plus the tooling, docs, and evidence for
 a known-good reference implementation. It is not the range engine, scoreboard,
 portal, class-management UI, or telemetry product.
 
-Public scenario-pack format authority now lives in the companion repository
-[`Brad-Edwards/aces-scenario-packs`](https://github.com/Brad-Edwards/aces-scenario-packs).
-This private catalog remains the content factory and golden-evidence home. Until
-the central v1 contract and schemas ship, the files described below are the
-local authoring and validation stand-ins for ACES packs, not a place to
-define new public contract semantics. The local mapping and open deltas are
-tracked in [Central Contract Adoption](central-contract-adoption.md).
+This repository is the authoritative home for that format. It ships the layout
+contract, schemas, template, and shared oracle model as package data, plus the
+tools that enforce them, so an author validates against the same version they
+build against. Packs live in their own catalog repositories and consume this
+package; this repo does not host packs.
 
 ## Required Shape
 
-Every new pack starts under `scenarios/<name>/` and follows the layout in
-`scenarios/README.md`:
+Every new pack starts under `scenarios/<name>/` in a catalog repo and follows
+the layout contract bundled in the package (`contract/pack-layout.md`):
 
 - `pack.yaml` for identity, provenance, status, and optional-layer inventory.
 - `docs/provenance-ledger.yaml` (required) — the machine-readable source,
@@ -31,9 +29,6 @@ Every new pack starts under `scenarios/<name>/` and follows the layout in
 - `build/`, `tests/`, and `docs/walkthroughs/` as the reference triangle.
 - `profiles/` for delivery and audience bundles when the scenario has them.
 - `docs/golden-readiness-checklist.md` for milestone planning and final review.
-
-`polaris/` predates this convention and is tracked as a legacy layout until it
-is explicitly migrated.
 
 ## Status Meanings
 
@@ -60,14 +55,10 @@ The three must agree path-for-path. A mismatch between them is a defect.
 
 ## Compatibility Manifest
 
-`pack.yaml` remains the private catalog entrypoint. When it contains
+`pack.yaml` is the catalog entrypoint. When it contains
 `compatibility_manifest: pack.compatibility.yaml`, the referenced file is
-validated against `scenarios/pack-compatibility.schema.yaml` by
+validated against the bundled `pack-compatibility.schema.yaml` by
 `aces-pack-validate`.
-
-That schema is transitional local validation for existing pack content. Do not
-extend it to define public v1 semantics; format-defining compatibility work
-belongs in the central companion repository first.
 
 The compatibility manifest separates:
 
@@ -86,9 +77,9 @@ store.
 ## Provenance Ledger
 
 Every pack ships `docs/provenance-ledger.yaml`, referenced from `pack.yaml`
-(`provenance_ledger:`) and validated against
-`scenarios/provenance.schema.yaml` by `aces-pack-validate`. It is
-the canonical, machine-readable record of:
+(`provenance_ledger:`) and validated against the bundled
+`provenance.schema.yaml` by `aces-pack-validate`. It is the canonical,
+machine-readable record of:
 
 - **`sources[]`** — upstream corpora, frameworks, tooling, datasets, research,
   original design, and generated material, each with a stable id, license,
@@ -108,17 +99,16 @@ Customer overlays are declared as path-contained `overlays[]` slots; their
 content is `customer-specific` and may be removed without contaminating the base
 pack. `docs/lineage.md` stays human prose and cites the ledger.
 
-Like the compatibility manifest, the provenance schema is a transitional local
-gate until the central contract supplies a public provenance and attestation
-schema. Local ledgers remain required for private content safety and publication
-review, and future central exports map from them rather than bypassing them.
+The provenance schema is enforced for every pack: it is the content-safety and
+publication-review gate, and pack exports carry the ledger rather than bypassing
+it.
 
 ## Validation Oracles
 
 When a pack ships an oracle or scoring layer, keep the hidden contract in
 operator/oracle-only pack-local files and reference those files from
-`pack.compatibility.yaml`. The shared model in `scenarios/_oracle/` defines the
-common authoring shape for canonical steps, accepted alternates, evidence,
+`pack.compatibility.yaml`. The shared oracle model bundled in the package defines
+the common authoring shape for canonical steps, accepted alternates, evidence,
 prerequisites, failure states, consumer adapters, and operator or benchmark
 exports.
 
@@ -157,8 +147,7 @@ When a pack ships `profiles/`, `pack.yaml` sets `contents.profile_bundles: true`
 and points at `profiles/bundles.yaml`; the pack carries the entrypoint files,
 a `profiles/validate_*.py` gate, and `profiles/tests`. The compatibility
 manifest mirrors the shipped bundle rows in `delivery_bundles` for catalog and
-commercial consumers. APT29 is the shipped emulation example for the five-bundle
-contract.
+commercial consumers.
 
 ## Build, Release & Versioning
 
@@ -169,12 +158,8 @@ its content, or the build fails fast), builds a boundary-split release tree
 (`participant/`, `operator/`, `oracle/`, `commercial/`) with the participant
 tier leak-scanned, smoke-tests that delivery-bundle selection changes
 participant exposure, and emits a versioned `release.yaml` (pack version, the
-scenario-pack contract version + digest from `scenarios/README.md`, supported
+scenario-pack contract version + digest from the bundled contract, supported
 profiles, and a bounded provenance summary). A pack is releasable once it ships
 a `pack.compatibility.yaml` with `artifact_boundaries`. Run
-`aces-pack-release check --all` locally; see the "Build, release
-& versioning" section of `scenarios/README.md` for the full contract.
-
-Release metadata currently pins the local convention version and digest. Do not
-add speculative central contract fields to `release.yaml`; add central
-source/version/digest metadata only after central v1 defines the field shape.
+`aces-pack-release check --all` locally; see the bundled layout contract
+(`contract/pack-layout.md`) for the full build/release section.

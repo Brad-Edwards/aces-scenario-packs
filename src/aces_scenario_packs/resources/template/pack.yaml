@@ -9,7 +9,7 @@ description: "One line: what the scenario is and what the player does."
 authors:
   - Name <email>
 license: "© 2026 Example Org. All rights reserved."
-requirement: null               # GC requirement UID, or null for issue-only packs
+requirement: null               # optional upstream tracking id, or null
 contents:                       # which optional layers ship; required ones are implicit
   flag_layer: false             # flags/ + challenges/ + ctfd/
   reference_triangle: false     # build/ + tests/ + docs/walkthroughs/

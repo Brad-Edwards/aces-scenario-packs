@@ -1,7 +1,7 @@
 # New Pack Script
 
-Use `aces-new-pack` to start a new pack from
-`scenarios/_template`.
+`aces-new-pack` scaffolds a new pack from the template bundled in the package,
+into the `scenarios/` tree of your catalog repo. Run it from the catalog root.
 
 ```sh
 aces-new-pack blind-example \
@@ -10,7 +10,7 @@ aces-new-pack blind-example \
   --issue 123
 ```
 
-For a Ground Control-backed scenario requirement, also pass the requirement UID:
+If you track packs against an upstream requirement id, pass it too:
 
 ```sh
 aces-new-pack example-range \
@@ -21,13 +21,12 @@ aces-new-pack example-range \
 The script:
 
 - validates the pack id as lowercase kebab-case;
-- copies `scenarios/_template` into `scenarios/<pack-id>`;
+- copies the bundled template into `scenarios/<pack-id>`;
 - patches `pack.yaml`, `pack.compatibility.yaml` when present, and the first
   README placeholders;
 - preserves the build doctrine and `docs/golden-readiness-checklist.md`;
 - refuses to overwrite an existing pack.
 
-After scaffolding, edit the generated `pack.yaml` and
-`pack.compatibility.yaml`, replace the README with scenario-specific prose, fill
-`sdl/` and `docs/`, and plan the milestone using the generated
-golden-readiness checklist.
+After scaffolding, edit the generated `pack.yaml` and `pack.compatibility.yaml`,
+replace the README with scenario-specific prose, fill in `sdl/` and `docs/`, and
+plan the milestone using the generated golden-readiness checklist.

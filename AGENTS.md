@@ -2,25 +2,17 @@
 
 This repository is the canonical home for the ACES scenario-pack definition,
 schemas, template, and authoring/validation tooling. It does not host actual
-scenario packs.
-
-## Ground Control
-
-- Ground Control project id: `aces-scenario-packs`.
-- Read `.ground-control.yaml` before implementation work.
-- Requirement UIDs use the `ASP-####` prefix unless a future issue records a
-  different accepted scheme.
-- Keep GitHub issues and Ground Control requirements linked when work satisfies
-  a tracked requirement.
+scenario packs — those live in their own catalog repositories and consume this
+package.
 
 ## Repository Boundaries
 
-- Keep ACES core semantics (the SDL) in `Brad-Edwards/aces`.
-- Keep the reusable scenario-pack definition, schemas, template, and
-  authoring/validation tooling here.
-- Do not host actual scenario packs here; they live in their own catalog repos.
-- Do not import downstream catalog names, paths, branch rules, labels, product
-  assumptions, or private deployment vocabulary into canonical docs.
+- ACES core semantics (the SDL) live in `Brad-Edwards/aces`.
+- The reusable scenario-pack definition, schemas, template, and
+  authoring/validation tooling live here.
+- Actual scenario packs live in their own catalog repos, not here.
+- Don't import downstream catalog names, paths, branch rules, labels, product
+  assumptions, or private deployment vocabulary into the canonical docs.
 
 ## Verification
 
@@ -32,6 +24,3 @@ aces-pack-validate --repo .
 aces-pack-release check --all
 python3 -m compileall src tests
 ```
-
-When changing Ground Control metadata, also verify that
-`.ground-control.yaml` and `.mcp.json` remain aligned.

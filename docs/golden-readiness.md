@@ -22,9 +22,9 @@ range can never disrupt another workload.
 - If isolation cannot be guaranteed in the default region, **build and test in a
   separate region** whose default VPC is empty of shared infrastructure.
 
-These are not optional. An `apt29` `aws_full` build that created private-DNS
-`ssm` interface endpoints in a shared default VPC silently wedged unrelated CI
-for ~107 minutes, until the range was torn down.
+These are not optional. A full-build range that created private-DNS `ssm`
+interface endpoints in a shared default VPC once silently wedged unrelated CI for
+over an hour, until the range was torn down.
 
 ## Milestone Structure
 

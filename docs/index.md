@@ -1,5 +1,6 @@
 # Documentation Index
 
+- [Scenario packs — definition](scenario-packs.md)
 - [ACES scenario-pack contract](../contracts/scenario-pack-contract.md)
 - [Repository charter](repository-charter.md)
 - [Migration planning](migration-plan.md)

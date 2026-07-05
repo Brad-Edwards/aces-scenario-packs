@@ -1,0 +1,9 @@
+{
+  "packId": "aces-example-pack",
+  "sources": [
+    {"origin": "authored-here", "ref": "contracts/scenario-pack-contract.md", "note": "Example pack authored from the public contract; no upstream port."}
+  ],
+  "scrubStatus": "not-required",
+  "ownership": "aces-scenario-packs",
+  "adoptionImpact": "Illustrative only; safe to adopt as a starting scaffold."
+}

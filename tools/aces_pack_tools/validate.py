@@ -12,7 +12,6 @@ import re
 from pathlib import Path
 
 from .model import Finding
-from .provenance import check_provenance
 from .schema import (
     SchemaIndex,
     conformance_errors,
@@ -111,22 +110,14 @@ def _check_artifact_boundary(record: object, root: Path, rel: str) -> list[Findi
     return findings
 
 
-# Per-family contract gates the schema alone cannot express, keyed by family.
-# artifact-boundary: path containment + declared-but-missing artifacts.
-# runtime-visibility: path containment, tier conflict, participant-tier leak.
-# provenance: content-safety, publication-review, attribution, source-reference,
-# and artifact-root containment / consumer-overlay gates.
-_FAMILY_GATES = {
-    "artifact-boundary": _check_artifact_boundary,
-    "runtime-visibility": check_visibility,
-    "provenance": check_provenance,
-}
-
-
 def _extra_family_gates(family: str, record: object, root: Path, rel: str) -> list[Finding]:
     """Run the per-family contract gates the schema alone cannot express."""
-    gate = _FAMILY_GATES.get(family)
-    return gate(record, root, rel) if gate else []
+    if family == "artifact-boundary":
+        return _check_artifact_boundary(record, root, rel)
+    if family == "runtime-visibility":
+        # Path-containment, tier-conflict, and participant-tier leak gates.
+        return check_visibility(record, root, rel)
+    return []
 
 
 def validate_pack(pack_root: str | Path, index: SchemaIndex) -> list[Finding]:

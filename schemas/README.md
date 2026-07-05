@@ -15,21 +15,15 @@ schema file that is not indexed and on any index entry missing its notes.
 
 ## Schema families
 
-All families are JSON Schema Draft 2020-12 with a
-`urn:aces-scenario-pack:schema:<family>:<contract-version>` identifier. Families
-are `:v0` except `provenance`, which has advanced to `:v1` as the first
-gap-area landing of the contract-v1 convergence
-(Brad-Edwards/aces-scenario-packs#19); the index is the source of truth for each
-family's published version.
+All families are JSON Schema Draft 2020-12 and version-lined with a
+`urn:aces-scenario-pack:schema:<family>:v0` identifier.
 
 - **pack-metadata** — pack identity, version, targeted ACES SDL contract version,
   scenario references, lifecycle state, and declared optional layers.
 - **compatibility** — the pack's declared ACES and pack-version compatibility and
   its compatibility boundary.
-- **provenance** (v1) — the four-part ledger: a first-class `sources[]` ledger,
-  a per-artifact-root distribution class, an all-true content-safety attestation,
-  and a per-gate publication-review checklist, plus path-contained consumer
-  overlays (references only).
+- **provenance** — source, ownership, scrub status, and adoption impact
+  (references only).
 - **artifact-boundary** — which artifacts are authored, generated, included,
   excluded, or consumer-supplied.
 - **runtime-visibility** — who may see each artifact root at runtime

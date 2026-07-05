@@ -8,7 +8,6 @@
 - [Authoring and tooling ownership plan](authoring-tooling-ownership.md)
 - [Capture workflow placement decision](capture-workflow-placement.md)
 - [Schema design guardrails](schema-design-guardrails.md)
-- [Provenance ledger design guardrails](provenance-ledger-design-guardrails.md)
 - [Tooling design guardrails](tooling-design-guardrails.md)
 - [Runtime visibility design guardrails](runtime-visibility-design-guardrails.md)
 - [Scenario-pack schemas](../schemas/README.md)

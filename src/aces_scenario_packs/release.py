@@ -367,7 +367,12 @@ def _stage_boundary_row(pc: "PackContracts", pack_root: str, group: str, tier: s
         return []
     ok, why = _safe_pack_path(pack_root, rel)
     src = os.path.join(pack_root, rel)
-    problem = why if not ok else ("does not exist" if not os.path.exists(src) else None)
+    if not ok:
+        problem = why
+    elif not os.path.exists(src):
+        problem = "does not exist"
+    else:
+        problem = None
     if problem:
         return [f"{pc.name}: boundary {group} path {rel} {problem}"]
     export = row.get("export")

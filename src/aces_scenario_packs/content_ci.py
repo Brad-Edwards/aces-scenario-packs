@@ -678,10 +678,11 @@ def _check_duplicate_ids(manifest: dict[str, object], failures: list[str], pack:
             seen.add(value)
 
 
-def _load_pack_doc(pack: str, pack_yaml: dict[str, object], pack_root: str, key: str,
+def _load_pack_doc(pack: str, pack_yaml: dict[str, object], key: str,
                    label: str, schema_path: str, failures: list[str], *,
                    required: bool) -> tuple[dict[str, object], dict[str, object], str] | None:
     """Load a pack-referenced YAML doc and its schema, or None (recording a failure)."""
+    pack_root = os.path.join(SCEN, pack)
     rel = pack_yaml.get(key)
     if not isinstance(rel, str) or not _path_inside_pack(pack_root, rel):
         if rel is not None:
@@ -706,7 +707,7 @@ def _validate_compatibility_manifest(pack: str, pack_yaml: dict[str, object],
                                      failures: list[str]) -> None:
     """Validate compatibility manifest."""
     pack_root = os.path.join(SCEN, pack)
-    loaded = _load_pack_doc(pack, pack_yaml, pack_root, "compatibility_manifest",
+    loaded = _load_pack_doc(pack, pack_yaml, "compatibility_manifest",
                             "compatibility manifest", compatibility_schema_path(),
                             failures, required=False)
     if loaded is None:
@@ -951,7 +952,7 @@ def _validate_provenance_ledger(pack: str, pack_yaml: dict[str, object],
                                 failures: list[str]) -> None:
     """Validate provenance ledger."""
     pack_root = os.path.join(SCEN, pack)
-    loaded = _load_pack_doc(pack, pack_yaml, pack_root, "provenance_ledger",
+    loaded = _load_pack_doc(pack, pack_yaml, "provenance_ledger",
                             "provenance ledger", provenance_schema_path(),
                             failures, required=True)
     if loaded is None:

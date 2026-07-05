@@ -11,16 +11,27 @@ When you work on a change:
   `docs/scenario-packs.md` — this repo defines and validates the pack format; it
   does not host packs.
 - Run the verification commands in `AGENTS.md` before opening a PR.
+- For a user-visible change, add a changelog fragment under
+  [`changelog.d/`](changelog.d/) (see its README) — don't edit `CHANGELOG.md`
+  directly.
 
-## Commit messages & releases
+## Changelog & releases
 
-PR titles must follow [Conventional Commits](https://www.conventionalcommits.org)
-(`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`, `ci:`, `build:`) — a
-CI check enforces this. The type drives the release: `feat:`→minor, `fix:`→patch,
-`feat!:`/`BREAKING CHANGE:`→major; `docs`/`chore`/`test`/`ci`/`refactor`/`build`
-don't release. Feature PRs are squash-merged, so the title *is* the commit — get
-it right. Releases are automatic when `dev` is promoted to `main`; you never edit
-a version. See [ADR 0006](docs/decisions/adrs/0006-conventional-commit-releases.md).
+The version is **driven by the changelog** (ADR 0007), so it can't drift from
+`CHANGELOG.md`. The **fragment type** you add decides the bump:
+`breaking`/`removed`→major, `added`/`changed`/`deprecated`→minor,
+`security`/`fixed`→patch. You never hand-edit a version.
+
+To cut a release, run `python tools/release.py` (it computes the version from the
+fragments, writes `__version__`, and collates `CHANGELOG.md`), commit on a
+`release/vX.Y.Z` branch, and open a PR to `main`; merging it publishes. See
+[ADR 0007](docs/decisions/adrs/0007-changelog-driven-versioning.md).
+
+Separately, PR titles must follow
+[Conventional Commits](https://www.conventionalcommits.org) (`feat:`, `fix:`,
+`docs:`, `chore:`, …) — a CI check enforces this and bans agent-branding
+prefixes. That keeps history tidy; it does **not** drive the version. Feature PRs
+are squash-merged, so the title *is* the commit — get it right.
 
 Changes to the public contract or schemas should include the rationale, the
 compatibility impact, and how you validated them. If you're moving content in

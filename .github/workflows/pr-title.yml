@@ -1,7 +1,7 @@
 name: PR Title
 
 # Repository-side PR title guard (ADR 0006). Enforces the Conventional Commit
-# shape python-semantic-release reads, and bans agent/tool advertising prefixes
+# Conventional Commit shape, and bans agent/tool advertising prefixes
 # (e.g. `[claude] ...`). Enforced by repo automation, not only agent
 # instructions. No `dev` exemption. Make "PR title guard" a required check on
 # dev and main so the release contract can't be bypassed or forgotten.

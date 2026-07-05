@@ -62,9 +62,13 @@ aces-pack-release check --all
 ```
 
 Build and release are documented in
-[ADR 0003](docs/decisions/adrs/0003-build-and-release-model.md): a `v*` tag
-triggers the release workflow, which builds the sdist + wheel, generates a
-CycloneDX SBOM, publishes to PyPI via OIDC trusted publishing, and cuts a GitHub
-Release.
+[ADR 0003](docs/decisions/adrs/0003-build-and-release-model.md) and
+[ADR 0005](docs/decisions/adrs/0005-automatic-release-on-merge-to-main.md).
+**To cut a release, bump `__version__` in `src/aces_scenario_packs/__init__.py`
+in your PR** (the single version source of truth); merging to `main` is the
+release action. On that merge the workflow tags `v<version>`, builds the sdist +
+wheel, generates a CycloneDX SBOM, publishes to PyPI via OIDC trusted publishing,
+and cuts a GitHub Release. If the version is unchanged the merge does not
+release. Pushing a `v*` tag by hand remains supported for backfills.
 
 Licensed under the MIT License (see [`LICENSE`](LICENSE)).

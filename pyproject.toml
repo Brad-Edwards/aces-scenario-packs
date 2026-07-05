@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aces-scenario-packs"
-version = "0.1.0"
+dynamic = ["version"]
 description = "ACES scenario-pack definition, schemas, template, and authoring/validation tooling."
 readme = "README.md"
 requires-python = ">=3.10"

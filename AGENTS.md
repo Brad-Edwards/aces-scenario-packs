@@ -24,14 +24,13 @@ scenario packs.
 
 ## Verification
 
-Before declaring repository work complete, run (in a venv with
-`pip install -r requirements.txt`):
+Before declaring repository work complete, run (in a venv with `pip install -e .`):
 
 ```sh
-python3 -m unittest discover -s scripts/ci/tests
-python3 scripts/ci/scenario_content_ci.py
-python3 scripts/ci/pack_release.py check --all
-python3 -m compileall scripts scenarios
+python -m unittest discover -s tests
+aces-pack-validate --repo .
+aces-pack-release check --all
+python3 -m compileall src tests
 ```
 
 When changing Ground Control metadata, also verify that

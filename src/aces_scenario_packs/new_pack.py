@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Create a new scenario pack from scenarios/_template.
+"""Create a new scenario pack from the packaged template.
 
 The script is intentionally small and conservative: it validates the pack id,
-copies the template, patches obvious placeholders, and leaves the doctrine and
-golden-readiness checklist in place for the author to work through.
+copies the packaged template into the consumer catalog's ``scenarios/<pack-id>/``,
+patches obvious placeholders, and leaves the doctrine and golden-readiness
+checklist in place for the author to work through.
 """
 
 from __future__ import annotations
@@ -20,6 +21,10 @@ PACK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
 README_FILE = "README.md"
 PACK_FILE = "pack.yaml"
 COMPATIBILITY_FILE = "pack.compatibility.yaml"
+
+# The template ships inside this installed package; the new pack is created in the
+# consumer catalog's scenarios/ directory.
+_TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "template")
 
 
 def repo_root(start: str | None = None) -> str:
@@ -120,10 +125,10 @@ def append_issue_provenance(pack_root: str, issue: int) -> None:
 def scaffold_pack(repo: str, pack_id: str, title: str, description: str,
                   requirement: str | None, issue: int | None) -> str:
     scenarios = os.path.join(repo, "scenarios")
-    template = os.path.join(scenarios, "_template")
+    template = _TEMPLATE_DIR
     target = scenario_pack_target(scenarios, pack_id)
     if not os.path.isdir(template):
-        raise SystemExit("missing scenarios/_template")
+        raise SystemExit("missing packaged template")
     if os.path.exists(target):
         raise SystemExit(f"target already exists: scenarios/{pack_id}")
 

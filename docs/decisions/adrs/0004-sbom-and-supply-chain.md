@@ -14,12 +14,14 @@ supply-chain review and vulnerability triage.
 ## Decision
 
 - Every release produces a **CycloneDX** SBOM in JSON format, generated from the
-  built distribution and its resolved dependencies (`cyclonedx-py`). CycloneDX is
-  chosen for broad tooling support in the security ecosystem.
-- The SBOM is:
-  - **shipped inside the wheel/sdist** (as package data) so an installed copy is
-    self-describing, and
-  - **attached to the GitHub Release** alongside the wheel and sdist (ADR 0003).
+  installed distribution and its resolved dependencies (`cyclonedx-py
+  environment`). CycloneDX is chosen for broad tooling support in the security
+  ecosystem.
+- The SBOM is **attached to the GitHub Release** alongside the wheel and sdist
+  (ADR 0003) and uploaded as a build artifact, so every published version has a
+  downloadable component inventory. Embedding the SBOM inside the wheel is
+  deferred; the Release attachment plus PyPI's OIDC provenance is the
+  supply-chain record for now.
 - The SBOM is generated in the release workflow, not committed to the source
   tree, so it always reflects the actual built artifact.
 - Because publishing uses OIDC trusted publishing (ADR 0003), the release also

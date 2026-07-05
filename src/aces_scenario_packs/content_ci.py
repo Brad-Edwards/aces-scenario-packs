@@ -26,7 +26,7 @@ so every present and future pack benefits:
 
 Stdlib + PyYAML only. Run locally exactly as CI does:
 
-    python3 scripts/ci/scenario_content_ci.py
+    aces-pack-validate --repo .
 """
 
 from __future__ import annotations
@@ -39,17 +39,28 @@ from typing import Any
 
 import yaml
 
-_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Canonical contract resources ship inside this installed package (schemas,
+# template, oracle fixtures + model). They are resolved relative to the package,
+# never the consumer's working tree.
+_PKG = os.path.dirname(os.path.abspath(__file__))
+_RES = os.path.join(_PKG, "resources")
+_SCHEMAS_DIR = os.path.join(_RES, "schemas")
+_TEMPLATE_DIR = os.path.join(_RES, "template")
+_ORACLE_DIR = os.path.join(_RES, "oracle")
+
+# The catalog under validation is the consumer's tree: <_REPO>/scenarios/<pack>/.
+# Defaults to the current directory; override with --repo, or by setting these
+# module globals directly (tests do this).
+_REPO = os.getcwd()
 SCEN = os.path.join(_REPO, "scenarios")
-COMPATIBILITY_SCHEMA_FILE = "pack-compatibility.schema.yaml"
-COMPATIBILITY_EXAMPLE_FILE = os.path.join("_template", "pack.compatibility.example.yaml")
+
 COMPATIBILITY_MANIFEST_FILE = "pack.compatibility.yaml"
 PACK_MANIFEST_FILE = "pack.yaml"
-
-# Provenance ledger (issue #48): the canonical source/licensing/safety/
-# publication/overlay-boundary contract every pack declares from its pack.yaml.
+COMPATIBILITY_SCHEMA_FILE = "pack-compatibility.schema.yaml"
 PROVENANCE_SCHEMA_FILE = "provenance.schema.yaml"
-PROVENANCE_EXAMPLE_FILE = os.path.join("_template", "docs", "provenance-ledger.example.yaml")
+# Display labels for the packaged example fixtures (used in messages only).
+COMPATIBILITY_EXAMPLE_FILE = os.path.join("template", "pack.compatibility.example.yaml")
+PROVENANCE_EXAMPLE_FILE = os.path.join("template", "docs", "provenance-ledger.example.yaml")
 # Safety attestations that must all be true to ship — the policy is EXCLUSION of
 # real sensitive content, never a weaker classification.
 CONTENT_SAFETY_FLAGS = (
@@ -66,19 +77,19 @@ REQUIRED_REVIEW_GATES = ("licensing", "attribution", "sensitive-data", "offensiv
 
 
 def compatibility_schema_path() -> str:
-    return os.path.join(SCEN, COMPATIBILITY_SCHEMA_FILE)
+    return os.path.join(_SCHEMAS_DIR, "pack-compatibility.schema.yaml")
 
 
 def compatibility_example_path() -> str:
-    return os.path.join(SCEN, COMPATIBILITY_EXAMPLE_FILE)
+    return os.path.join(_TEMPLATE_DIR, "pack.compatibility.example.yaml")
 
 
 def provenance_schema_path() -> str:
-    return os.path.join(SCEN, PROVENANCE_SCHEMA_FILE)
+    return os.path.join(_SCHEMAS_DIR, "provenance.schema.yaml")
 
 
 def provenance_example_path() -> str:
-    return os.path.join(SCEN, PROVENANCE_EXAMPLE_FILE)
+    return os.path.join(_TEMPLATE_DIR, "docs", "provenance-ledger.example.yaml")
 
 # Packs are scenarios/<name>/ with a pack.yaml. _template is a scaffold, not a
 # pack; design-notes is shared prose. `polaris` is the legacy NORTHSTORM
@@ -135,6 +146,8 @@ def _is_git_visible_pack_dir(name: str) -> bool:
 
 
 def _packs() -> list[str]:
+    if not os.path.isdir(SCEN):
+        return []
     out = []
     for name in sorted(os.listdir(SCEN)):
         p = os.path.join(SCEN, name)
@@ -290,12 +303,12 @@ def check_wizard_spider_pack_drift(failures: list[str]) -> None:
         print(f"  [ok] wizard-spider pack drift scan ({scanned} files)")
 
 
-def _shared_oracle_dir() -> str:
-    return os.path.join(SCEN, "_oracle")
+def _shared_oracle_model_file() -> str:
+    return os.path.join(_PKG, "oracle_model.py")
 
 
 def _shared_oracle_fixture_paths() -> list[str]:
-    fixtures = os.path.join(_shared_oracle_dir(), "fixtures")
+    fixtures = os.path.join(_ORACLE_DIR, "fixtures")
     if not os.path.isdir(fixtures):
         return []
     return [
@@ -306,29 +319,26 @@ def _shared_oracle_fixture_paths() -> list[str]:
 
 
 def check_shared_oracle_model(failures: list[str]) -> None:
-    """Validate the shared oracle model fixtures and tests.
+    """Smoke-check the packaged shared oracle model against its shipped fixtures.
 
-    The shared oracle directory is not a scenario pack. It is a reusable
-    operator/oracle-only authoring contract, so it gets its own gate instead of
-    flowing through pack discovery.
+    The model and fixtures ship inside this package; the package's own test suite
+    exercises the model's behaviour. This gate only confirms the shipped model
+    validates its shipped fixtures, so a broken release is caught in the field.
     """
-    oracle_dir = _shared_oracle_dir()
-    model = os.path.join(oracle_dir, "oracle_model.py")
+    model = _shared_oracle_model_file()
     fixtures = _shared_oracle_fixture_paths()
-    tests = os.path.join(oracle_dir, "tests")
 
     if not os.path.isfile(model):
-        failures.append("shared oracle model MISSING: scenarios/_oracle/oracle_model.py")
+        failures.append("shared oracle model MISSING from package")
         return
     if not fixtures:
-        failures.append("shared oracle fixtures MISSING: scenarios/_oracle/fixtures/*.yaml")
+        failures.append("shared oracle fixtures MISSING from package")
         return
 
     r = subprocess.run(
         [sys.executable, model, "validate", *fixtures],
         capture_output=True,
         text=True,
-        cwd=_REPO,
     )
     if r.returncode != 0:
         failures.append(
@@ -336,21 +346,6 @@ def check_shared_oracle_model(failures: list[str]) -> None:
             f"{r.stdout[-1200:]}{r.stderr[-1200:]}")
     else:
         print(f"  [ok] shared oracle fixtures ({len(fixtures)} files)")
-
-    if not os.path.isdir(tests):
-        failures.append("shared oracle tests MISSING: scenarios/_oracle/tests")
-        return
-    r = subprocess.run(
-        [sys.executable, "-m", "unittest", "discover", "-s", tests],
-        capture_output=True,
-        text=True,
-        cwd=_REPO,
-    )
-    if r.returncode != 0:
-        failures.append(f"shared oracle tests FAILED:\n{r.stderr[-1200:]}")
-    else:
-        summary = r.stderr.strip().splitlines()[-1] if r.stderr else "ok"
-        print(f"  [ok] shared oracle tests ({summary})")
 
 
 def _load_yaml(path: str, failures: list[str], label: str) -> Any:
@@ -980,7 +975,18 @@ def check_golden_checklist(failures: list[str]) -> None:
             print(f"  [ok] {pack}/docs/golden-readiness-checklist.md")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    global _REPO, SCEN
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Validate a scenario-pack catalog against the ACES pack contract.")
+    parser.add_argument(
+        "--repo", default=_REPO,
+        help="Catalog root containing scenarios/<pack>/ (default: current directory).")
+    args = parser.parse_args(argv)
+    _REPO = os.path.abspath(args.repo)
+    SCEN = os.path.join(_REPO, "scenarios")
+
     failures: list[str] = []
     print("== shared oracle model =="); check_shared_oracle_model(failures)
     print("== validators =="); check_validators(failures)

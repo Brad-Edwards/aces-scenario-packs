@@ -1,10 +1,10 @@
 # New Pack Script
 
-Use `scripts/new_scenario_pack.py` to start a new pack from
+Use `aces-new-pack` to start a new pack from
 `scenarios/_template`.
 
 ```sh
-python3 scripts/new_scenario_pack.py blind-example \
+aces-new-pack blind-example \
   --title "Blind Example" \
   --description "One line: what the scenario is and what the player does." \
   --issue 123
@@ -13,7 +13,7 @@ python3 scripts/new_scenario_pack.py blind-example \
 For a Ground Control-backed scenario requirement, also pass the requirement UID:
 
 ```sh
-python3 scripts/new_scenario_pack.py example-range \
+aces-new-pack example-range \
   --title "Example Range" \
   --requirement EXR-0001
 ```

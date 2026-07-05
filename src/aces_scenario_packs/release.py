@@ -55,7 +55,7 @@ import yaml
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
-import scenario_content_ci as cc  # noqa: E402  (sibling helper module)
+import content_ci as cc  # noqa: E402  (sibling helper module)
 
 REPO = cc._REPO
 SCEN = cc.SCEN
@@ -74,22 +74,24 @@ BOUNDARY_TIERS = {
 }
 PARTICIPANT_TIER = "participant"
 
-# The contract version line lives in scenarios/README.md as a single, machine
-# detectable marker so consumers detect contract drift without parsing prose.
+# The contract version line lives in the packaged contract source as a single,
+# machine-detectable marker so consumers detect contract drift without parsing
+# prose.
 _CONTRACT_VERSION_RE = re.compile(r"Scenario-pack contract version:\**\s*`([^`]+)`")
+_CONTRACT_SOURCE = os.path.join(cc._RES, "contract", "pack-layout.md")
+CONTRACT_SOURCE_LABEL = "contract/pack-layout.md"
 
 
 # --------------------------------------------------------------------------
 # Contract version
 # --------------------------------------------------------------------------
-def load_contract_version(repo_root: str = REPO) -> tuple[str | None, str]:
-    """Return ``(version, "sha256:<digest>")`` for ``scenarios/README.md``.
+def load_contract_version() -> tuple[str | None, str]:
+    """Return ``(version, "sha256:<digest>")`` for the packaged contract source.
 
     The digest lets a release manifest pin the exact contract text it was built
     against, so a consumer can detect drift without re-parsing the prose.
     """
-    path = os.path.join(repo_root, "scenarios", "README.md")
-    with open(path, "rb") as fh:
+    with open(_CONTRACT_SOURCE, "rb") as fh:
         raw = fh.read()
     body = raw.decode("utf-8", errors="replace")
     m = _CONTRACT_VERSION_RE.search(body)
@@ -495,7 +497,7 @@ def release_metadata(pack_root: str, *, include_build_provenance: bool = False,
                      repo_root: str = REPO) -> dict[str, Any]:
     pc = PackContracts(pack_root)
     compat = pc.compatibility or {}
-    version, digest = load_contract_version(repo_root)
+    version, digest = load_contract_version()
 
     supported = sorted(
         b.get("bundle_id") for b in (compat.get("delivery_bundles") or [])
@@ -513,7 +515,7 @@ def release_metadata(pack_root: str, *, include_build_provenance: bool = False,
             "version": str(pc.pack_yaml.get("version") or "0.0.0"),
             "status": pc.pack_yaml.get("status"),
         },
-        "contract": {"version": version, "source": "scenarios/README.md", "digest": digest},
+        "contract": {"version": version, "source": CONTRACT_SOURCE_LABEL, "digest": digest},
         "supported_profiles": supported,
         "runtime_profiles": runtime,
         "provenance_summary": _provenance_summary(pc.provenance),

@@ -1,27 +1,45 @@
 # ACES Scenario Packs
 
 The canonical, shared home for the **ACES scenario-pack definition** and the
-**authoring / validation tooling** that goes with it. It exists so the pack
-contract and tools are a standard resource, independent of any single catalog of
-actual packs.
+**authoring / validation tooling** that goes with it, published as an installable
+Python package so catalogs (and others) consume one version-matched artifact
+instead of vendoring the contract.
 
-This repository does **not** host scenario packs. Packs live in their own
-catalog repositories and consume this contract.
+This repository does **not** host scenario packs. Packs live in their own catalog
+repositories and consume this contract.
+
+## Install
+
+```sh
+pip install aces-scenario-packs
+```
+
+This provides the console tools plus the version-matched schemas and template:
+
+- `aces-pack-validate` — validate a pack catalog's content against the contract.
+- `aces-pack-release` — boundary-split build, lint, release, and profile-smoke gate.
+- `aces-new-pack` — scaffold a new pack from the bundled template.
+- `aces-pack-issue-skeleton` — generate a pack work-issue skeleton.
+
+Run the gates from a catalog repository (the tree containing `scenarios/<pack>/`):
+
+```sh
+aces-pack-validate --repo .
+aces-pack-release check --all
+```
 
 ## What's here
 
 - **Definition**
   - [`docs/scenario-packs.md`](docs/scenario-packs.md) — what a scenario pack is.
-  - [`scenarios/README.md`](scenarios/README.md) — the pack layout contract.
-  - [`scenarios/provenance.schema.yaml`](scenarios/provenance.schema.yaml) and
-    [`scenarios/pack-compatibility.schema.yaml`](scenarios/pack-compatibility.schema.yaml) — the schemas.
-  - [`scenarios/_template/`](scenarios/_template/) — the template pack an author copies.
-  - [`scenarios/_oracle/`](scenarios/_oracle/) — the shared validation-oracle model.
-- **Tools** (`scripts/`)
-  - `new_scenario_pack.py` — scaffold a new pack from the template.
-  - `create_scenario_pack_issue_skeleton.py` — generate a pack work issue skeleton.
-  - `ci/scenario_content_ci.py` — content/definition validation gate.
-  - `ci/pack_release.py` — boundary-split build, lint, release, and profile-smoke gate.
+  - Layout contract + schemas + template ship as package data under
+    [`src/aces_scenario_packs/resources/`](src/aces_scenario_packs/resources/)
+    (`contract/pack-layout.md`, `schemas/`, `template/`, `oracle/`).
+  - [Architecture Decision Records](docs/decisions/adrs/) — purpose, packaging,
+    build/release, SBOM.
+- **Tools** — the package modules under
+  [`src/aces_scenario_packs/`](src/aces_scenario_packs/), exposed as the console
+  entry points above.
 
 ## Boundary
 
@@ -36,12 +54,17 @@ catalog repositories and consume this contract.
 ```sh
 python3 -m venv .venv
 . .venv/bin/activate
-pip install -r requirements.txt
+pip install -e .
 
-# gates (see .github/workflows/ci.yml)
-python3 -m unittest discover -s scripts/ci/tests
-python3 scripts/ci/scenario_content_ci.py
-python3 scripts/ci/pack_release.py check --all
+python -m unittest discover -s tests
+aces-pack-validate --repo .
+aces-pack-release check --all
 ```
+
+Build and release are documented in
+[ADR 0003](docs/decisions/adrs/0003-build-and-release-model.md): a `v*` tag
+triggers the release workflow, which builds the sdist + wheel, generates a
+CycloneDX SBOM, publishes to PyPI via OIDC trusted publishing, and cuts a GitHub
+Release.
 
 Licensed under the MIT License (see [`LICENSE`](LICENSE)).

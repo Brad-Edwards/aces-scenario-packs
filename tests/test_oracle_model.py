@@ -14,9 +14,10 @@ import unittest
 
 import yaml
 
-_ORACLE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_MODEL_PATH = os.path.join(_ORACLE_DIR, "oracle_model.py")
-_FIXTURE_DIR = os.path.join(_ORACLE_DIR, "fixtures")
+_PKG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    "src", "aces_scenario_packs")
+_MODEL_PATH = os.path.join(_PKG, "oracle_model.py")
+_FIXTURE_DIR = os.path.join(_PKG, "resources", "oracle", "fixtures")
 
 
 def _load_model_module():

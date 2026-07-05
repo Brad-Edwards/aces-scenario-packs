@@ -125,7 +125,7 @@ def contract_body(plan: PackPlan) -> str:
     {COMMON_ANCHORS}
     ## Deliverables
     - Create or link the real Ground Control DRAFT scenario requirement before stamping `pack.yaml.requirement`; do not synthesize a UID.
-    - Scaffold `scenarios/{plan.pack_id}/` from `scenarios/_template/` with `scripts/new_scenario_pack.py`.
+    - Scaffold `scenarios/{plan.pack_id}/` from `scenarios/_template/` with `aces-new-pack`.
     - Fill `pack.yaml`, `pack.compatibility.yaml`, and `docs/provenance-ledger.yaml` with truthful initial metadata.
     - Replace template prose in `README.md`, `docs/concepts.md`, `docs/attack-path.md`, and `docs/lineage.md`.
     - Record source adaptation decisions: what is used, excluded, changed, or locally designed.

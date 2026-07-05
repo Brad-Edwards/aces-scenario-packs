@@ -189,6 +189,23 @@ def _resolve_title(args: argparse.Namespace) -> str | None:
     return os.environ.get("PR_TITLE")
 
 
+def _resolve_author(args: argparse.Namespace) -> str | None:
+    """Best-effort PR author login from the event JSON (CI path only).
+
+    The event payload is runner-provided (trusted), not PR-controllable, so a PR
+    cannot spoof its author to dodge the guard.
+    """
+    event_path = args.event_path or os.environ.get("GITHUB_EVENT_PATH")
+    if not event_path:
+        return None
+    try:
+        with open(event_path, encoding="utf-8") as handle:
+            event = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return ((event.get("pull_request") or {}).get("user") or {}).get("login")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Repository-side PR title guard.",
@@ -204,6 +221,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Path to the GitHub event JSON (defaults to $GITHUB_EVENT_PATH).",
     )
     args = parser.parse_args(argv)
+
+    # Automated authors (e.g. dependabot[bot]) use controlled title formats;
+    # exempt them so dependency PRs are not blocked by the human title policy.
+    author = _resolve_author(args)
+    if author and author.endswith("[bot]"):
+        print(f"pr-title-guard: skipping automated author {author!r}.")
+        return 0
 
     title = _resolve_title(args)
     if title is None:

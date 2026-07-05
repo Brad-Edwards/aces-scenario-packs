@@ -54,10 +54,11 @@ include = [
 # GitHub Release. See docs/decisions/adrs/0006-conventional-commit-releases.md.
 [tool.semantic_release]
 tag_format = "v{version}"
-commit = false
 allow_zero_version = true
 major_on_zero = false
 build_command = "python -m pip install build && python -m build"
+# NOTE: commit/tag/push/changelog behaviour (tag-only, no branch commit) is set
+# on the release workflow's action inputs, not here — they are not pyproject keys.
 
 [tool.semantic_release.branches.main]
 match = "main"

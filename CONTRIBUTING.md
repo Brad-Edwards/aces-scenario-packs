@@ -6,7 +6,7 @@ templates, examples, or workflow tools into this repository.
 For implementation work:
 
 - Keep changes scoped to the linked issue.
-- Preserve the repository boundary described in `docs/repository-charter.md`.
+- Preserve the repository boundary described in `docs/scenario-packs.md` and `README.md`.
 - Run the verification commands in `AGENTS.md`.
 - Update Ground Control traceability when a tracked requirement is satisfied.
 

@@ -1,17 +1,19 @@
 # Coverage configuration for the scenario-pack tooling.
 #
-# Measures the aces_pack_tools package and emits relative file paths so
+# Measures the authoring/validation tooling and emits relative file paths so
 # SonarCloud can map coverage.xml onto sonar.sources (see sonar-project.properties
 # and .github/workflows/ci.yml). Default exclusions (e.g. `# pragma: no cover`)
 # apply.
 [run]
-source = tools/aces_pack_tools
+source =
+    scripts
+    scenarios/_oracle
 relative_files = True
 
 [report]
 # Keep coverage.py's default `pragma: no cover` and also exclude the
-# ``if __name__ == "__main__":`` entry-point guard, which only runs under
-# ``python -m aces_pack_tools`` (a subprocess) and cannot be covered in process.
+# ``if __name__ == "__main__":`` entry-point guard, which only runs as a
+# subprocess and cannot be covered in process.
 exclude_lines =
     pragma: no cover
     if __name__ == .__main__.:

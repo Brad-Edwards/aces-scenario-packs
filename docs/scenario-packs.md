@@ -4,6 +4,14 @@ A scenario pack is declarative content plus the tooling, docs, and evidence for
 a known-good reference implementation. It is not the range engine, scoreboard,
 portal, class-management UI, or telemetry product.
 
+Public scenario-pack format authority now lives in the companion repository
+[`Brad-Edwards/aces-scenario-packs`](https://github.com/Brad-Edwards/aces-scenario-packs).
+This private catalog remains the content factory and golden-evidence home. Until
+the central v1 contract and schemas ship, the files described below are the
+local authoring and validation stand-ins for ACES packs, not a place to
+define new public contract semantics. The local mapping and open deltas are
+tracked in [Central Contract Adoption](central-contract-adoption.md).
+
 ## Required Shape
 
 Every new pack starts under `scenarios/<name>/` and follows the layout in
@@ -24,6 +32,8 @@ Every new pack starts under `scenarios/<name>/` and follows the layout in
 - `profiles/` for delivery and audience bundles when the scenario has them.
 - `docs/golden-readiness-checklist.md` for milestone planning and final review.
 
+`polaris/` predates this convention and is tracked as a legacy layout until it
+is explicitly migrated.
 
 ## Status Meanings
 
@@ -50,10 +60,14 @@ The three must agree path-for-path. A mismatch between them is a defect.
 
 ## Compatibility Manifest
 
-`pack.yaml` remains the catalog entrypoint. When it contains
+`pack.yaml` remains the private catalog entrypoint. When it contains
 `compatibility_manifest: pack.compatibility.yaml`, the referenced file is
 validated against `scenarios/pack-compatibility.schema.yaml` by
 `scripts/ci/scenario_content_ci.py`.
+
+That schema is transitional local validation for existing pack content. Do not
+extend it to define public v1 semantics; format-defining compatibility work
+belongs in the central companion repository first.
 
 The compatibility manifest separates:
 
@@ -82,7 +96,7 @@ the canonical, machine-readable record of:
   excluded.
 - **`artifacts[]`** — pack-relative roots classified for distribution as `open`,
   `redistributable`, `internal-only`, `commercial-only`, `generated`, or
-  `customer-specific`. This open-vs-internal-only axis is distinct from the
+  `customer-specific`. This open-vs-ACES-only axis is distinct from the
   compatibility manifest's runtime-visibility export values.
 - **`content_safety{}`** — mandatory attestations (no real malware, third-party
   targets, credentials, or sensitive data; offensive-tooling boundary), all of
@@ -93,6 +107,11 @@ the canonical, machine-readable record of:
 Customer overlays are declared as path-contained `overlays[]` slots; their
 content is `customer-specific` and may be removed without contaminating the base
 pack. `docs/lineage.md` stays human prose and cites the ledger.
+
+Like the compatibility manifest, the provenance schema is a transitional local
+gate until the central contract supplies a public provenance and attestation
+schema. Local ledgers remain required for private content safety and publication
+review, and future central exports map from them rather than bypassing them.
 
 ## Validation Oracles
 
@@ -112,7 +131,7 @@ next-step hints.
 
 ## Operating Profiles
 
-This convention uses **delivery/audience bundles** for operating profiles:
+ACES uses **delivery/audience bundles** for operating profiles:
 `guided`, `unguided`, `purple-team`, `agent-benchmark`, and `demo`. These are
 content overlays under `profiles/`; they are not runtime/provider profiles.
 Selecting a bundle changes which participant, facilitator, defender, benchmark,
@@ -138,7 +157,8 @@ When a pack ships `profiles/`, `pack.yaml` sets `contents.profile_bundles: true`
 and points at `profiles/bundles.yaml`; the pack carries the entrypoint files,
 a `profiles/validate_*.py` gate, and `profiles/tests`. The compatibility
 manifest mirrors the shipped bundle rows in `delivery_bundles` for catalog and
-commercial consumers.
+commercial consumers. APT29 is the shipped emulation example for the five-bundle
+contract.
 
 ## Build, Release & Versioning
 
@@ -154,3 +174,7 @@ profiles, and a bounded provenance summary). A pack is releasable once it ships
 a `pack.compatibility.yaml` with `artifact_boundaries`. Run
 `python3 scripts/ci/pack_release.py check --all` locally; see the "Build, release
 & versioning" section of `scenarios/README.md` for the full contract.
+
+Release metadata currently pins the local convention version and digest. Do not
+add speculative central contract fields to `release.yaml`; add central
+source/version/digest metadata only after central v1 defines the field shape.

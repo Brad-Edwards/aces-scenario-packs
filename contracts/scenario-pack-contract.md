@@ -141,43 +141,6 @@ Two rules make the classification enforceable:
   root nested inside another with a different tier is rejected, so staging and
   scanning stay within one tier.
 
-## Provenance Ledger
-
-A pack's provenance record is a four-part ledger. The four parts are independent
-axes; a pack MUST model each explicitly rather than deriving one from another.
-
-- **Sources** — a first-class ledger of where content came from. Each source
-  row carries a stable id, a kind (upstream corpus, framework, tool, dataset,
-  research, original design, or generated material), its license and usage
-  terms, whether attribution is required (with the attribution text when it is),
-  and what was used versus excluded. Rows are references only; they MUST NOT copy
-  private source content, real credentials, private hosts, or customer data.
-- **Distribution class** — every artifact root declares what MAY be done with
-  its content when the pack is distributed: open, redistributable, internal-only,
-  commercial-only, generated, or consumer-specific. This "what may be published
-  or sold" axis is separate from runtime visibility (who may see a root at
-  runtime), artifact-boundary disposition, and lifecycle state.
-- **Content-safety attestation** — named boolean gates asserting no real
-  malware, no real third-party targets, no real credentials, no sensitive data,
-  and an offensive-tooling boundary. Validation requires every gate to be true;
-  the policy is exclusion of real sensitive content, never a weaker publishable
-  class.
-- **Publication review** — a per-gate checklist (at least licensing,
-  attribution, sensitive-data, and offensive-tooling; optionally a
-  consumer-overlay gate), each pending, approved, or blocked. Review status
-  describes clearance to publish, not whether the content is safe; a blocked gate
-  fails validation.
-
-**Consumer overlays.** A consumer-specific artifact root is a removable overlay.
-An overlay root MUST be path-contained (no `..`, absolute paths, or symlink
-escapes) and MUST NOT overlap a base artifact root, so removing the overlay
-removes its source, licensing, distribution, and review claims without changing
-the base pack's claims.
-
-The attestation all-true rule, the blocked-review rejection, attribution
-completeness, source-reference integrity, and overlay containment / non-overlap
-are enforced by validation gates the schema alone cannot express.
-
 ## Lifecycle States
 
 A pack's lifecycle state describes its maturity and publication status as an

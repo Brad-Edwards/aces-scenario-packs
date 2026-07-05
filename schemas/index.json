@@ -31,15 +31,15 @@
     },
     {
       "family": "provenance",
-      "id": "urn:aces-scenario-pack:schema:provenance:v1",
-      "path": "schemas/provenance.v1.schema.json",
-      "version": "1.0.0",
+      "id": "urn:aces-scenario-pack:schema:provenance:v0",
+      "path": "schemas/provenance.v0.schema.json",
+      "version": "0.1.0",
       "status": "draft",
-      "title": "ACES Scenario Pack — Provenance (v1)",
-      "source": "Authored in this repository from contracts/scenario-pack-contract.md, docs/provenance-ledger-design-guardrails.md, and the incumbent four-part provenance ledger (Brad-Edwards/aces-scenario-packs#19, #21). No upstream schema ported.",
-      "ownership": "aces-scenario-packs owns the four-part provenance ledger: sources, per-artifact distribution class, content-safety attestation, and publication review. Records references only; never copies private content or credentials. Distribution class is separate from runtime visibility.",
-      "compatibility_impact": "Breaking replacement of provenance v0 (contract-v1 convergence, #19): the collapsed sources+scrubStatus+ownership shape is superseded by the four-part ledger. Pre-1.0 (0.y across the repo); no cross-version compatibility promise. Future changes follow docs/versioning.md.",
-      "fixtures": ["schemas/examples/provenance.v1.example.json"]
+      "title": "ACES Scenario Pack — Provenance (v0)",
+      "source": "Authored in this repository from contracts/scenario-pack-contract.md and docs/migration-plan.md. No upstream schema ported.",
+      "ownership": "aces-scenario-packs owns pack provenance/scrub/adoption records. Records references only; never copies private content or credentials.",
+      "compatibility_impact": "New pre-1.0 schema; additive. No prior published version. Future changes follow docs/versioning.md.",
+      "fixtures": ["schemas/examples/provenance.v0.example.json"]
     },
     {
       "family": "artifact-boundary",

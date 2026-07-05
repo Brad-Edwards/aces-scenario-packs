@@ -24,7 +24,6 @@ if str(TOOLS) not in sys.path:
 import aces_pack_tools.__main__  # noqa: E402,F401  (covers the module-level imports)
 from aces_pack_tools import cli  # noqa: E402
 from aces_pack_tools.model import Finding  # noqa: E402
-from aces_pack_tools.schema import SchemaIndex  # noqa: E402
 
 INDEX = ROOT / "schemas" / "index.json"
 EXAMPLES = ROOT / "schemas" / "examples"
@@ -79,10 +78,8 @@ class CliMainTests(unittest.TestCase):
 
     def test_validate_directory_returns_zero(self):
         with tempfile.TemporaryDirectory() as tmp:
-            index = SchemaIndex(INDEX)
             for family in ("pack-metadata", "compatibility", "provenance", "lifecycle"):
-                # Resolve fixtures through the index so a version bump does not strand this.
-                obj = (ROOT / index.entry(family).fixtures[0]).read_text(encoding="utf-8")
+                obj = (EXAMPLES / f"{family}.v0.example.json").read_text(encoding="utf-8")
                 (Path(tmp) / f"{family}.json").write_text(obj, encoding="utf-8")
             code, _, _ = _run_main(["validate", tmp, "--schema-index", str(INDEX)])
             self.assertEqual(0, code)

@@ -32,12 +32,11 @@ from aces_pack_tools.validate import check_profile, validate_pack, validate_reco
 INDEX = ROOT / "schemas" / "index.json"
 EXAMPLES = ROOT / "schemas" / "examples"
 
-# Repo example fixtures keyed by family (named "<family>.<contract-version>.example.json";
-# provenance advanced to the v1 contract line, the rest are still v0).
+# Repo example fixtures keyed by family (named "<family>.v0.example.json").
 FAMILY_EXAMPLE = {
     "pack-metadata": EXAMPLES / "pack-metadata.v0.example.json",
     "compatibility": EXAMPLES / "compatibility.v0.example.json",
-    "provenance": EXAMPLES / "provenance.v1.example.json",
+    "provenance": EXAMPLES / "provenance.v0.example.json",
     "artifact-boundary": EXAMPLES / "artifact-boundary.v0.example.json",
     "runtime-visibility": EXAMPLES / "runtime-visibility.v0.example.json",
     "runtime-profile": EXAMPLES / "runtime-profile.v0.example.json",

@@ -32,7 +32,7 @@ from dataclasses import dataclass
 
 from . import leak
 from .model import Finding
-from .schema import normalize_subtree, pack_relative, resolve_within_root, subtrees_overlap
+from .schema import pack_relative, resolve_within_root
 
 # Canonical filename for a pack's runtime-visibility record.
 RECORD_NAME = "runtime-visibility.json"
@@ -71,6 +71,23 @@ def tier_policy(tier: str) -> dict[str, object]:
         raise ValueError(f"unknown runtime-visibility tier: {tier}")
     # Return a copy so callers cannot mutate the shared policy table.
     return dict(_TIER_POLICY[tier])
+
+
+def _normalize(path: str) -> tuple[str, ...]:
+    """Split a pack-relative root path into normalized, non-empty POSIX parts."""
+    return tuple(part for part in path.strip("/").split("/") if part and part != ".")
+
+
+def _subtrees_overlap(left: tuple[str, ...], right: tuple[str, ...]) -> bool:
+    """True when one root subtree contains or equals the other (ancestor/descendant/equal).
+
+    A runtime-visibility root classifies a whole subtree, so two roots overlap
+    when one path is a prefix of the other. Overlapping roots with different
+    tiers are a leak: the more-restricted subtree would stage into, and be
+    scanned as, the other tier.
+    """
+    shortest = min(len(left), len(right))
+    return left[:shortest] == right[:shortest]
 
 
 def restricted_tier_findings(text: str, path: str) -> list[Finding]:
@@ -161,11 +178,11 @@ def _conflict_findings(record: dict[str, object], rel: str) -> list[Finding]:
         path = item.get("path")
         visibility = item.get("visibility")
         if isinstance(path, str) and isinstance(visibility, str):
-            classified.append((normalize_subtree(path), visibility))
+            classified.append((_normalize(path), visibility))
     findings: list[Finding] = []
     for i, (left, left_tier) in enumerate(classified):
         for right, right_tier in classified[i + 1:]:
-            if left_tier != right_tier and subtrees_overlap(left, right):
+            if left_tier != right_tier and _subtrees_overlap(left, right):
                 findings.append(
                     Finding(
                         "runtime-visibility",

@@ -28,7 +28,15 @@ jobs:
       - name: Dependency vulnerability audit
         run: |
           python -m pip install pip-audit
-          pip-audit
+          # Retry: the advisory API is network-dependent, so a transient blip
+          # should not fail the build. A real vulnerability fails all attempts.
+          for i in 1 2 3; do
+            if pip-audit; then exit 0; fi
+            echo "pip-audit attempt $i failed; retrying in 10s..."
+            sleep 10
+          done
+          echo "pip-audit failed after 3 attempts"
+          exit 1
 
       - name: Unit tests
         run: python -m unittest discover -s tests

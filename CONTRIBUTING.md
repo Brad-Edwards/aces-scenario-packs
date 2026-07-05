@@ -11,6 +11,9 @@ When you work on a change:
   `docs/scenario-packs.md` — this repo defines and validates the pack format; it
   does not host packs.
 - Run the verification commands in `AGENTS.md` before opening a PR.
+- For a user-visible change, add a changelog fragment under
+  [`changelog.d/`](changelog.d/) (see its README) — don't edit `CHANGELOG.md`
+  directly.
 
 ## Commit messages & releases
 

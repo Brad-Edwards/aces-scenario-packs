@@ -46,6 +46,7 @@ include = [
     "/tests",
     "/README.md",
     "/LICENSE",
+    "/CHANGELOG.md",
 ]
 
 # Release automation: python-semantic-release computes the next version from

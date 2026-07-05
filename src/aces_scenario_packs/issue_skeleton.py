@@ -565,7 +565,8 @@ class GhClient(object):
         """Initialize the instance."""
         self.repo = repo
 
-    def run(self, args: list[str], payload: dict[str, object] | None = None) -> object:
+    @staticmethod
+    def run(args: list[str], payload: dict[str, object] | None = None) -> object:
         """Run."""
         cmd = ["gh", *args]
         input_text = json.dumps(payload) if payload is not None else None
@@ -613,6 +614,8 @@ class GhClient(object):
         """Create milestone."""
         row = self.run(["api", "--method", "POST",
                         f"repos/{self.repo}/milestones"], {"title": title})
+        if not isinstance(row, dict):
+            raise SystemExit(f"unexpected milestone response for {title!r}")
         return int(row["number"])
 
     def create_issue(self, operation: Operation, milestone_number: int) -> None:
@@ -743,6 +746,19 @@ def require_milestone_number(milestone_number: int | None,
     return milestone_number
 
 
+def _apply_issue_operation(client: GhClient, operation: Operation,
+                           active_milestone: int | None) -> None:
+    """Apply issue operation."""
+    if operation.action == "create_issue":
+        client.create_issue(operation, require_milestone_number(active_milestone, "create"))
+        print(f"created issue: {operation.title}")
+    elif operation.action == "update_issue":
+        client.update_issue(operation, require_milestone_number(active_milestone, "update"))
+        print(f"updated issue #{operation.issue_number}: {operation.title}")
+    elif operation.action == "skip_issue":
+        print(f"skipped issue #{operation.issue_number}: {operation.title}")
+
+
 def apply_operation(client: GhClient, operation: Operation,
                     active_milestone: int | None) -> int | None:
     """Apply operation."""
@@ -750,18 +766,7 @@ def apply_operation(client: GhClient, operation: Operation,
         milestone_number = client.create_milestone(operation.title)
         print(f"created milestone {milestone_number}: {operation.title}")
         return milestone_number
-    if operation.action == "create_issue":
-        milestone_number = require_milestone_number(active_milestone, "create")
-        client.create_issue(operation, milestone_number)
-        print(f"created issue: {operation.title}")
-        return active_milestone
-    if operation.action == "update_issue":
-        milestone_number = require_milestone_number(active_milestone, "update")
-        client.update_issue(operation, milestone_number)
-        print(f"updated issue #{operation.issue_number}: {operation.title}")
-        return active_milestone
-    if operation.action == "skip_issue":
-        print(f"skipped issue #{operation.issue_number}: {operation.title}")
+    _apply_issue_operation(client, operation, active_milestone)
     return active_milestone
 
 

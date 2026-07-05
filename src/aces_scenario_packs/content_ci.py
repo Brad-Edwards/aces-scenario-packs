@@ -678,29 +678,40 @@ def _check_duplicate_ids(manifest: dict[str, object], failures: list[str], pack:
             seen.add(value)
 
 
+def _load_pack_doc(pack: str, pack_yaml: dict[str, object], pack_root: str, key: str,
+                   label: str, schema_path: str, failures: list[str], *,
+                   required: bool) -> tuple[dict[str, object], dict[str, object], str] | None:
+    """Load a pack-referenced YAML doc and its schema, or None (recording a failure)."""
+    rel = pack_yaml.get(key)
+    if not isinstance(rel, str) or not _path_inside_pack(pack_root, rel):
+        if rel is not None:
+            failures.append(f"{label} INVALID: {pack}: {key} path escapes pack root")
+        elif required:
+            failures.append(
+                f"{label} MISSING: scenarios/{pack}/{PACK_MANIFEST_FILE} has no {key} pointer")
+        return None
+    path = os.path.join(pack_root, rel)
+    schema = manifest = None
+    if os.path.isfile(path):
+        schema = _load_yaml(schema_path, failures, f"{label} schema")
+        manifest = _load_yaml(path, failures, label)
+    if not isinstance(schema, dict) or not isinstance(manifest, dict):
+        state = "MISSING" if not os.path.isfile(path) else "INVALID"
+        failures.append(f"{label} {state}: scenarios/{pack}/{rel}")
+        return None
+    return schema, manifest, rel
+
+
 def _validate_compatibility_manifest(pack: str, pack_yaml: dict[str, object],
                                      failures: list[str]) -> None:
     """Validate compatibility manifest."""
     pack_root = os.path.join(SCEN, pack)
-    manifest_rel = pack_yaml.get("compatibility_manifest")
-    if manifest_rel is None:
+    loaded = _load_pack_doc(pack, pack_yaml, pack_root, "compatibility_manifest",
+                            "compatibility manifest", compatibility_schema_path(),
+                            failures, required=False)
+    if loaded is None:
         return
-    if not isinstance(manifest_rel, str) or not _path_inside_pack(pack_root, manifest_rel):
-        failures.append(
-            f"compatibility manifest INVALID: {pack}: compatibility_manifest "
-            "path escapes pack root")
-        return
-
-    manifest_path = os.path.join(pack_root, manifest_rel)
-    if not os.path.isfile(manifest_path):
-        failures.append(f"compatibility manifest MISSING: scenarios/{pack}/{manifest_rel}")
-        return
-
-    schema = _load_yaml(compatibility_schema_path(), failures, "compatibility schema")
-    manifest = _load_yaml(manifest_path, failures, "compatibility manifest")
-    if not isinstance(schema, dict) or not isinstance(manifest, dict):
-        failures.append(f"compatibility manifest INVALID: scenarios/{pack}/{manifest_rel}")
-        return
+    schema, manifest, manifest_rel = loaded
 
     errors: list[str] = []
     _validate_json_schema_subset(manifest, schema, schema, "$", errors)
@@ -940,27 +951,12 @@ def _validate_provenance_ledger(pack: str, pack_yaml: dict[str, object],
                                 failures: list[str]) -> None:
     """Validate provenance ledger."""
     pack_root = os.path.join(SCEN, pack)
-    ledger_rel = pack_yaml.get("provenance_ledger")
-    if ledger_rel is None:
-        failures.append(
-            f"provenance ledger MISSING: scenarios/{pack}/{PACK_MANIFEST_FILE} has no "
-            "provenance_ledger pointer")
+    loaded = _load_pack_doc(pack, pack_yaml, pack_root, "provenance_ledger",
+                            "provenance ledger", provenance_schema_path(),
+                            failures, required=True)
+    if loaded is None:
         return
-    if not isinstance(ledger_rel, str) or not _path_inside_pack(pack_root, ledger_rel):
-        failures.append(
-            f"provenance ledger INVALID: {pack}: provenance_ledger path escapes "
-            "pack root")
-        return
-    ledger_path = os.path.join(pack_root, ledger_rel)
-    if not os.path.isfile(ledger_path):
-        failures.append(f"provenance ledger MISSING: scenarios/{pack}/{ledger_rel}")
-        return
-
-    schema = _load_yaml(provenance_schema_path(), failures, "provenance schema")
-    ledger = _load_yaml(ledger_path, failures, "provenance ledger")
-    if not isinstance(schema, dict) or not isinstance(ledger, dict):
-        failures.append(f"provenance ledger INVALID: scenarios/{pack}/{ledger_rel}")
-        return
+    schema, ledger, ledger_rel = loaded
 
     errors: list[str] = []
     _validate_json_schema_subset(ledger, schema, schema, "$", errors)

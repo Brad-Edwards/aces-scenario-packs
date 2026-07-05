@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import re
+from dataclasses import dataclass
 
 
 SCHEMA_VERSION = 1
@@ -597,10 +598,19 @@ def _validate_outcome_refs(issues: list[Issue], obj: dict[str, object], oid: str
                          failure_ids, REFERENCE_UNKNOWN)
 
 
+@dataclass(frozen=True)
+class _OutcomeRefs(object):
+    """Collected id sets an outcome row is validated against."""
+
+    outcome_ids: set[str]
+    step_ids: set[str]
+    evidence_ids: set[str]
+    failure_ids: set[str]
+    consumer_ids: set[str]
+
+
 def _validate_outcome_row(issues: list[Issue], raw: object, idx: int,
-                          outcome_ids: set[str], step_ids: set[str],
-                          evidence_ids: set[str], failure_ids: set[str],
-                          consumer_ids: set[str]) -> None:
+                          refs: _OutcomeRefs) -> None:
     """Validate outcome row."""
     obj = _as_mapping(issues, raw, "outcome", str(idx))
     oid = str(obj.get("id", idx))
@@ -610,9 +620,10 @@ def _validate_outcome_row(issues: list[Issue], raw: object, idx: int,
     if "required_evidence" not in obj:
         issues.append(Issue("outcome", oid, "required_evidence",
                             "required", "missing"))
-    _validate_outcome_identity(issues, obj, oid, outcome_ids)
-    _validate_outcome_refs(issues, obj, oid, step_ids, evidence_ids, failure_ids)
-    _validate_awards(issues, obj.get("awards"), "outcome", oid, consumer_ids)
+    _validate_outcome_identity(issues, obj, oid, refs.outcome_ids)
+    _validate_outcome_refs(issues, obj, oid, refs.step_ids, refs.evidence_ids,
+                           refs.failure_ids)
+    _validate_awards(issues, obj.get("awards"), "outcome", oid, refs.consumer_ids)
 
 
 def _validate_outcomes(data: dict[str, object], issues: list[Issue],
@@ -621,11 +632,10 @@ def _validate_outcomes(data: dict[str, object], issues: list[Issue],
                        consumer_ids: set[str]) -> set[str]:
     """Validate outcomes."""
     outcome_ids: set[str] = set()
+    refs = _OutcomeRefs(outcome_ids, step_ids, evidence_ids, failure_ids, consumer_ids)
     for idx, raw in enumerate(_as_list(issues, data.get("outcomes"),
                                       "oracle", "root", "outcomes")):
-        _validate_outcome_row(
-            issues, raw, idx, outcome_ids, step_ids, evidence_ids, failure_ids,
-            consumer_ids)
+        _validate_outcome_row(issues, raw, idx, refs)
     return outcome_ids
 
 

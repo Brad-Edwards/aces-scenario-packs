@@ -174,10 +174,14 @@ release act**, and PSR releases exactly the accumulated consumer-visible changes
 
 ## First-release bootstrap (one-time, per repo)
 
-`main` starts with no conventional history, so PSR finds nothing to release on
-the first `dev`→`main`. Bootstrap the initial version by running the release
-workflow via `workflow_dispatch` with `force: minor` (→ `0.1.0`). PSR
-auto-manages every release after that.
+With no prior tag, PSR would otherwise cut an initial `0.0.1` on the first
+`dev`→`main` push — probably not the version you want. The release workflow
+therefore **gates the first release behind an explicit `force`**: when no `v*`
+tag exists and the run has no `force` input, it skips. So the first `dev`→`main`
+merge does nothing, and you cut the intended first version deliberately by
+running the workflow via `workflow_dispatch` with `force: minor` (→ `0.1.0`).
+Once a tag exists, the gate opens and every subsequent `dev`→`main` push
+auto-releases from the conventional commits.
 
 ## PyPI trusted publishing (per repo)
 

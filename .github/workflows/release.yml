@@ -40,8 +40,21 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Gate the first release behind an explicit force
+        id: gate
+        run: |
+          if git tag --list 'v*' | grep -q .; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"   # tags exist: normal auto-release
+          elif [ -n "${{ github.event.inputs.force }}" ]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"   # first release, explicitly forced
+          else
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No release tags yet and no force input - skipping. Run this workflow manually with force=minor to cut the first release."
+          fi
+
       - name: Python Semantic Release (version + tag + GitHub Release + build)
         id: release
+        if: steps.gate.outputs.proceed == 'true'
         uses: python-semantic-release/python-semantic-release@37a30a7987cfebb6d49240bf1c4e9cd9817d0673 # v10.6.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

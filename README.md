@@ -61,24 +61,26 @@ aces-pack-validate --repo .
 aces-pack-release check --all
 ```
 
-Releases are **automatic** and driven by
-[Conventional Commits](https://www.conventionalcommits.org)
-(see [ADR 0006](docs/decisions/adrs/0006-conventional-commit-releases.md)). You
-never hand-edit a version — the git tag is the source of truth, and
-python-semantic-release computes the next version from commit types:
+Releases are **changelog-driven**
+(see [ADR 0007](docs/decisions/adrs/0007-changelog-driven-versioning.md)). You
+never hand-edit a version — the version is computed from the changelog fragments,
+so the tag and `CHANGELOG.md` can't drift. Each user-visible PR adds a fragment
+under [`changelog.d/`](changelog.d/) (`<issue>.<type>.md`); the **fragment type**
+decides the bump:
 
-| Change (commit / PR title) | Releases? | Bump |
-| --- | --- | --- |
-| `fix:` | yes | patch |
-| `feat:` | yes | minor |
-| `feat!:` / `BREAKING CHANGE:` | yes | major (pre-1.0: minor) |
-| `docs:` `chore:` `test:` `ci:` `refactor:` `build:` | no | — |
+| Fragment type | Bump |
+| --- | --- |
+| `breaking`, `removed` | major (pre-1.0: minor) |
+| `added`, `changed`, `deprecated` | minor |
+| `security`, `fixed` | patch |
 
-Rule of thumb: **release when a consumer would observe the change; hold when it's
-repo-internal.** Merge freely into `dev`; **promoting `dev`→`main` cuts the
-release** — the workflow tags `v<version>`, builds the sdist + wheel, generates a
-CycloneDX SBOM, publishes to PyPI via OIDC, and creates the GitHub Release. A CI
-check requires PR titles to be conventional; feature PRs are squash-merged, and
-`dev`→`main` uses a merge/rebase (never squash).
+To cut a release, run the **Prepare release** workflow: it computes the next
+version from the fragments, collates them into `CHANGELOG.md`, and opens a
+release PR. Merge it and promote `dev`→`main`; the Release workflow then tags
+`v<version>`, builds the sdist + wheel, generates a CycloneDX SBOM, publishes to
+PyPI via OIDC, and cuts a GitHub Release (only a tag is pushed — never a commit to
+`main`). Feature PRs are squash-merged; `dev`→`main` uses a merge/rebase (never
+squash). PR titles must be conventional (a CI check enforces it, and bans
+agent-branding prefixes) — that keeps history tidy but does not drive the version.
 
 Licensed under the MIT License (see [`LICENSE`](LICENSE)).

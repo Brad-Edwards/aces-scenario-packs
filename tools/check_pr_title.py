@@ -11,8 +11,8 @@ Policy:
     ``[claude] ...``, ``[openai] ...``, ``[chatgpt] ...`` (case-insensitive), on
     every target branch including ``dev`` — no ``dev`` exemption.
   * Enforce the Conventional Commit shape ``<type>(<optional-scope>): <subject>``
-    with a single allowed type. The type set is the one python-semantic-release
-    parses (ADR 0006), so a valid title always maps to a release decision.
+    with a single allowed type. This keeps git history tidy; it does NOT drive the
+    version (changelog fragments do — ADR 0007).
   * Require the subject to start lowercase (``^[a-z].*$``).
 
 Security: the PR title is untrusted GitHub event data. The CLI reads it from
@@ -41,7 +41,7 @@ from dataclasses import dataclass
 #: Agent/tool advertising prefixes banned as a bracketed title prefix.
 BRANDED_PREFIXES: tuple[str, ...] = ("codex", "claude", "openai", "chatgpt")
 
-#: Conventional Commit types python-semantic-release understands (ADR 0006).
+#: Conventional Commit types accepted in PR titles (history hygiene; ADR 0007).
 CONVENTIONAL_TYPES: tuple[str, ...] = (
     "feat",
     "fix",

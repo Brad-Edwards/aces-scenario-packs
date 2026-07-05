@@ -28,8 +28,8 @@ aces-pack-release = "aces_scenario_packs.release:main"
 aces-new-pack = "aces_scenario_packs.new_pack:main"
 aces-pack-issue-skeleton = "aces_scenario_packs.issue_skeleton:main"
 
-# Version is derived from the git tag (the release tag python-semantic-release
-# creates). The tag is the single source of truth; nothing is hand-bumped.
+# Version is derived from the git tag (the release tag the release workflow
+# creates from CHANGELOG.md). The tag is the source of truth; nothing is hand-bumped.
 [tool.hatch.version]
 source = "vcs"
 
@@ -49,17 +49,8 @@ include = [
     "/CHANGELOG.md",
 ]
 
-# Release automation: python-semantic-release computes the next version from
-# Conventional Commit messages and creates the git tag. Tag-only (no commit is
-# pushed back to the protected main branch); the changelog is emitted to the
-# GitHub Release. See docs/decisions/adrs/0006-conventional-commit-releases.md.
-[tool.semantic_release]
-tag_format = "v{version}"
-allow_zero_version = true
-major_on_zero = false
-build_command = "python -m pip install build && python -m build"
-# NOTE: commit/tag/push/changelog behaviour (tag-only, no branch commit) is set
-# on the release workflow's action inputs, not here — they are not pyproject keys.
-
-[tool.semantic_release.branches.main]
-match = "main"
+# Release automation is changelog-driven (ADR 0007): the version is computed from
+# the changelog.d/ fragment types by tools/release_bump.py, written into
+# CHANGELOG.md by towncrier, and tagged by the release workflow. hatch-vcs derives
+# the built version from that tag. There is no version string to edit and no
+# commit-message-driven versioning tool.

@@ -1,30 +1,67 @@
 name: Release
 
-# Changelog-driven release (ADR 0007, supersedes 0006's commit-driven versioning).
-#
-# CHANGELOG.md's newest `## [X.Y.Z]` section IS the release version — the version
-# is a pure function of the towncrier changelog, so the tag can never drift from
-# the changelog. On every push to `main`, if that version has no tag yet, this job
-# tags it, builds the sdist + wheel (hatch-vcs derives the version from the tag),
-# attaches a CycloneDX SBOM, publishes to PyPI via OIDC, and cuts a GitHub Release
-# whose notes are the changelog section. It only ever creates a tag — it never
-# pushes a commit to the protected `main` branch.
-#
-# To cut a release, run the "Prepare release" workflow: it computes the next
-# version from the changelog.d/ fragments, collates them into CHANGELOG.md, and
-# opens a release PR. Merging it (and promoting dev -> main) is what triggers this.
+# Committed-literal release (ADR 0007). The version is the __version__ literal in
+# src/aces_scenario_packs/__init__.py — bumped by tools/release.py together with
+# the CHANGELOG.md section. On push to main, if __version__ has a matching
+# CHANGELOG section and no tag yet, this tags it, builds the sdist + wheel,
+# generates the SBOM, publishes to PyPI via OIDC, and cuts a GitHub Release whose
+# notes are the changelog section. It only ever creates a tag — no commit is ever
+# pushed to the protected main branch. All third-party actions are SHA-pinned.
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
+  decide:
+    name: Decide whether to release
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.d.outputs.release }}
+      version: ${{ steps.d.outputs.version }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - id: d
+        run: |
+          set -euo pipefail
+          # Guard 1: never publish while typed changelog fragments are still
+          # uncollated. A real release always collates first (tools/release.py),
+          # so pending fragments mean this promotion is not a prepared release —
+          # this blocks the first main promotion from publishing a half-baked
+          # version before any release has been cut.
+          pending="$(find changelog.d -maxdepth 1 -type f -name '*.md' ! -name 'README.md' | wc -l | tr -d ' ')"
+          if [ "${pending}" != "0" ]; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::${pending} uncollated changelog fragment(s) pending; run tools/release.py first. Skipping."
+            exit 0
+          fi
+          version="$(grep -oP '^__version__\s*=\s*"\K[^"]+' src/aces_scenario_packs/__init__.py)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::v${version} is already released; nothing to do."
+          elif ! grep -q "^## \[${version}\]" CHANGELOG.md; then
+            # Guard: __version__ was bumped without a matching changelog section
+            # (or is the unreleased 0.0.0). tools/release.py writes both together;
+            # refuse to publish an un-changelogged version.
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::__version__ is ${version} but CHANGELOG.md has no [${version}] section; run tools/release.py. Skipping."
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "Releasing v${version}."
+          fi
+
   release:
-    name: Release
+    name: Build, publish, and release
+    needs: [decide]
+    if: needs.decide.outputs.release == 'true'
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -41,66 +78,22 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Decide release from the changelog
-        id: decide
-        run: |
-          set -uo pipefail
-          # Guard: never publish a stale changelog. If typed fragments are still
-          # pending, Prepare Release has not been run for this promotion — the
-          # CHANGELOG top is behind the real work, so releasing it would ship an
-          # incomplete changelog. Skip until the changelog is collated.
-          if pending="$(python tools/release_bump.py next 2>/dev/null)"; then
-            echo "release=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::uncollated changelog fragments are pending (next=${pending}); run Prepare Release before promoting. Skipping."
-            exit 0
-          fi
-          version="$(python tools/release_bump.py current 2>/dev/null || true)"
-          if [ -z "${version}" ]; then
-            echo "release=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::no version section in CHANGELOG.md; nothing to release."
-            exit 0
-          fi
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          if git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; then
-            echo "release=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::v${version} is already released; nothing to do."
-          else
-            echo "release=true" >> "$GITHUB_OUTPUT"
-            echo "Releasing v${version} (from CHANGELOG.md)."
-          fi
-
       - name: Create and push the release tag
-        if: steps.decide.outputs.release == 'true'
         env:
-          TAG: v${{ steps.decide.outputs.version }}
+          V: ${{ needs.decide.outputs.version }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "${TAG}" -m "Release ${TAG}"
-          git push origin "${TAG}"
+          git tag -a "v${V}" -m "Release v${V}"
+          git push origin "v${V}"
 
       - name: Build sdist + wheel
-        if: steps.decide.outputs.release == 'true'
         run: |
           python -m pip install --upgrade build
           python -m build --outdir dist
 
-      - name: Assert the built version matches the changelog
-        if: steps.decide.outputs.release == 'true'
-        env:
-          EXPECTED: ${{ steps.decide.outputs.version }}
-        run: |
-          set -euo pipefail
-          built="$(ls dist/*.whl | sed -E 's|.*/aces_scenario_packs-([0-9]+\.[0-9]+\.[0-9]+)-.*|\1|' | head -1)"
-          if [ "${built}" != "${EXPECTED}" ]; then
-            echo "::error::built version ${built} != changelog/tag version ${EXPECTED}"
-            exit 1
-          fi
-          echo "built version ${built} matches the changelog/tag."
-
       - name: Generate CycloneDX SBOM
-        if: steps.decide.outputs.release == 'true'
         run: |
           set -euo pipefail
           python -m pip install dist/*.whl cyclonedx-bom
@@ -109,23 +102,28 @@ jobs:
             --output-format JSON \
             --output-file sbom/aces-scenario-packs.cdx.json
 
-      - name: Write release notes from the changelog
-        if: steps.decide.outputs.release == 'true'
-        run: python tools/release_bump.py notes > release-notes.md
+      - name: Extract release notes from the changelog
+        env:
+          V: ${{ needs.decide.outputs.version }}
+        run: |
+          awk -v v="$V" '
+            $0 ~ "^## \\[" v "\\]" { f=1; next }
+            f && /^## \[/ { exit }
+            f { print }
+          ' CHANGELOG.md > notes.md
+          test -s notes.md || echo "Release v${V}" > notes.md
 
       - name: Publish to PyPI (OIDC trusted publishing)
-        if: steps.decide.outputs.release == 'true'
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
         with:
           packages-dir: dist
 
       - name: Create the GitHub Release
-        if: steps.decide.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: v${{ steps.decide.outputs.version }}
+          V: ${{ needs.decide.outputs.version }}
         run: |
-          gh release create "${TAG}" \
-            --title "${TAG}" \
-            --notes-file release-notes.md \
+          gh release create "v${V}" \
+            --title "v${V}" \
+            --notes-file notes.md \
             dist/* sbom/aces-scenario-packs.cdx.json

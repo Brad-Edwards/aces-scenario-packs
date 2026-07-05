@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
@@ -18,6 +18,9 @@ classifiers = [
 ]
 dependencies = ["PyYAML>=6"]
 
+[project.optional-dependencies]
+dev = ["towncrier>=23.11.0"]
+
 [project.urls]
 Homepage = "https://github.com/Brad-Edwards/aces-scenario-packs"
 Repository = "https://github.com/Brad-Edwards/aces-scenario-packs"
@@ -28,13 +31,10 @@ aces-pack-release = "aces_scenario_packs.release:main"
 aces-new-pack = "aces_scenario_packs.new_pack:main"
 aces-pack-issue-skeleton = "aces_scenario_packs.issue_skeleton:main"
 
-# Version is derived from the git tag (the release tag the release workflow
-# creates from CHANGELOG.md). The tag is the source of truth; nothing is hand-bumped.
+# The version is a single committed literal in the package __init__ (ADR 0007),
+# read here by hatchling. tools/release.py bumps it from the changelog fragments.
 [tool.hatch.version]
-source = "vcs"
-
-[tool.hatch.build.hooks.vcs]
-version-file = "src/aces_scenario_packs/_version.py"
+path = "src/aces_scenario_packs/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/aces_scenario_packs"]
@@ -49,8 +49,7 @@ include = [
     "/CHANGELOG.md",
 ]
 
-# Release automation is changelog-driven (ADR 0007): the version is computed from
-# the changelog.d/ fragment types by tools/release_bump.py, written into
-# CHANGELOG.md by towncrier, and tagged by the release workflow. hatch-vcs derives
-# the built version from that tag. There is no version string to edit and no
-# commit-message-driven versioning tool.
+# Release automation (ADR 0007): tools/release.py computes the next version from
+# the changelog.d/ fragment types, writes the __version__ literal above, and
+# collates CHANGELOG.md via towncrier. The release workflow tags it; hatchling
+# reads __version__ for the build. No hatch-vcs, no commit-message versioning.

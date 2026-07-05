@@ -6,10 +6,7 @@ enforce them, so consumers install one version-matched artifact instead of
 vendoring the contract.
 """
 
-from importlib.metadata import PackageNotFoundError, version as _version
-
-try:
-    __version__ = _version("aces-scenario-packs")
-except PackageNotFoundError:
-    # Running from a source tree without installed package metadata.
-    __version__ = "0.0.0"
+# Single committed source of truth for the version (ADR 0007). tools/release.py
+# bumps this from the towncrier fragments; hatchling reads it via
+# [tool.hatch.version] path. Do not edit by hand.
+__version__ = "0.0.0"

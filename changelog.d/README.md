@@ -33,14 +33,19 @@ slug with `+`, e.g. `+fix-typo.fixed.md`, to suppress the issue suffix.
 
 ## Cutting a release
 
-You don't build the changelog by hand — run the **Prepare release** workflow. It
-computes the next version from these fragments, collates them into
-[`../CHANGELOG.md`](../CHANGELOG.md), and opens a release PR. Merging it and
-promoting `dev`→`main` tags and publishes that exact version.
-
-To preview locally what the next release would be:
+Run `tools/release.py` — it computes the next version from these fragments (by
+type), writes `__version__`, and collates the fragments into
+[`../CHANGELOG.md`](../CHANGELOG.md). Then commit on a `release/vX.Y.Z` branch and
+open a PR to `main`; merging it tags and publishes that exact version.
 
 ```sh
-python tools/release_bump.py next          # the computed version
-python -m towncrier build --draft --version "$(python tools/release_bump.py next)"
+python tools/release.py           # bump __version__ + build CHANGELOG.md
+# then: git switch -c release/vX.Y.Z && git commit -am 'chore: release vX.Y.Z'
+#       && gh pr create --base main --title 'chore: release vX.Y.Z' --fill
+```
+
+Preview the collated section without writing, once you know the version:
+
+```sh
+python -m towncrier build --draft --version X.Y.Z
 ```

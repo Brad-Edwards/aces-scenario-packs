@@ -74,13 +74,16 @@ decides the bump:
 | `added`, `changed`, `deprecated` | minor |
 | `security`, `fixed` | patch |
 
-To cut a release, run the **Prepare release** workflow: it computes the next
-version from the fragments, collates them into `CHANGELOG.md`, and opens a
-release PR. Merge it and promote `dev`→`main`; the Release workflow then tags
-`v<version>`, builds the sdist + wheel, generates a CycloneDX SBOM, publishes to
-PyPI via OIDC, and cuts a GitHub Release (only a tag is pushed — never a commit to
-`main`). Feature PRs are squash-merged; `dev`→`main` uses a merge/rebase (never
-squash). PR titles must be conventional (a CI check enforces it, and bans
-agent-branding prefixes) — that keeps history tidy but does not drive the version.
+The version is a single committed literal (`__version__` in
+`src/aces_scenario_packs/__init__.py`), read by hatchling and bumped by
+`tools/release.py`. To cut a release: run `python tools/release.py` (it computes
+the version from the fragments, writes `__version__`, and collates `CHANGELOG.md`),
+commit on a `release/vX.Y.Z` branch, and open a PR to `main`. On merge, the
+Release workflow tags `v<version>`, builds the sdist + wheel, generates a
+CycloneDX SBOM, publishes to PyPI via OIDC, and cuts a GitHub Release (only a tag
+is pushed — never a commit to `main`). The first release is not special — you run
+`tools/release.py` for `0.1.0` exactly as for every later version. PR titles must
+be conventional (a CI check enforces it and bans agent-branding prefixes) — that
+keeps history tidy but does not drive the version.
 
 Licensed under the MIT License (see [`LICENSE`](LICENSE)).

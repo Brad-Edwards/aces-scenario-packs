@@ -22,9 +22,9 @@ The version is **driven by the changelog** (ADR 0007), so it can't drift from
 `breaking`/`removed`→major, `added`/`changed`/`deprecated`→minor,
 `security`/`fixed`→patch. You never hand-edit a version.
 
-To cut a release, run the **Prepare release** workflow (it computes the version
-from the fragments, builds `CHANGELOG.md`, and opens a release PR); merge it and
-promote `dev`→`main` to publish. See
+To cut a release, run `python tools/release.py` (it computes the version from the
+fragments, writes `__version__`, and collates `CHANGELOG.md`), commit on a
+`release/vX.Y.Z` branch, and open a PR to `main`; merging it publishes. See
 [ADR 0007](docs/decisions/adrs/0007-changelog-driven-versioning.md).
 
 Separately, PR titles must follow

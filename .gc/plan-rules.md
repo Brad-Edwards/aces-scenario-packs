@@ -6,10 +6,10 @@ the generic workflow. Ground Control injects this file into planning via
 
 ## Releases & versioning (ADR 0007 — hard requirement)
 
-- **Never hand-edit a version.** There is no version string to bump — the version
-  is derived from the changelog. Do **not** edit `__version__`, a `pyproject`
-  version, `CHANGELOG.md`, or any version file/section in a feature PR. A PR that
-  does is wrong; drop that change.
+- **Never hand-edit the version or changelog.** `__version__` in
+  `src/aces_scenario_packs/__init__.py` is a committed literal that only
+  `tools/release.py` bumps. Do **not** edit `__version__` or `CHANGELOG.md` in a
+  feature PR. A PR that does is wrong; drop that change.
 - **Add a changelog fragment for every user-visible change.** Create
   `changelog.d/<issue>.<type>.md` (body = one bullet). The fragment **type is the
   release decision** (this is the rubric):
@@ -20,8 +20,9 @@ the generic workflow. Ground Control injects this file into planning via
     this?"* Yes → add a fragment. Repo-internal only (CI, tests, refactors) → no
     fragment, no release.
 - **Never add release/tag/publish steps or run towncrier build in a feature PR.**
-  Releasing is a separate act: the **Prepare release** workflow computes the
-  version from the fragments, builds `CHANGELOG.md`, and opens a release PR.
+  Releasing is a separate act: run `python tools/release.py` (computes the version
+  from the fragments, writes `__version__`, collates `CHANGELOG.md`), commit on a
+  `release/vX.Y.Z` branch, and open a PR to `main`.
 - **PR titles MUST be Conventional Commits** — `type: summary`, `type` one of
   `feat fix docs chore refactor test ci build perf style revert`. A required CI
   check (`PR title guard`, `tools/check_pr_title.py`) blocks non-conforming titles

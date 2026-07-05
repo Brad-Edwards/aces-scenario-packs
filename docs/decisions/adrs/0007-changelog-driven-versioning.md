@@ -1,90 +1,76 @@
-# ADR 0007 — Changelog-driven versioning
+# ADR 0007 — Changelog-driven versioning (committed literal)
 
 - Status: Accepted
 - Date: 2026-07-06
-- Supersedes: the **versioning mechanism** of
+- Supersedes: the **versioning + release mechanism** of
   [ADR 0006](0006-conventional-commit-releases.md). ADR 0006's other decisions
-  (hatch-vcs tag-derived build version, protected-`main` / tag-only release, SBOM,
-  PyPI OIDC, the PR-title guard, squash-feature / merge-promotion) still hold.
+  (SBOM, PyPI OIDC, the PR-title guard, protected `main`) still hold.
 
-> **Reusable blueprint.** Portable to other repos; only the package name and
-> branch names are repo-specific.
+> **Reusable blueprint.** Portable across repos; per-repo variables:
+> `{{DIST}}` = PyPI name, `{{VERSION_FILE}}` = the package `__init__.py`,
+> `{{REPO}}` = `owner/repo`. For this repo: `aces-scenario-packs`,
+> `src/aces_scenario_packs/__init__.py`, `Brad-Edwards/aces-scenario-packs`.
 
 ## Context
 
-ADR 0006 computed the version from **Conventional Commit messages** (via
-python-semantic-release) while the human `CHANGELOG.md` was maintained separately
-with **towncrier fragments**. That is two independent sources for one release:
-the tool could tag `0.2.0` from a `feat:` commit while the changelog section said
-`0.1.0`. The version and the changelog could **drift**.
+The version and the changelog must never disagree. Earlier attempts derived the
+version from git tags (hatch-vcs) or commit messages (semantic-release), kept the
+changelog separately, and needed special first-release seeding. Too many moving
+parts, and drift was possible.
 
 ## Decision
 
-Make the **changelog the single source of the version**. The towncrier fragments
-decide both what the release notes say *and* how big the version bump is, so the
-tag is a pure function of the changelog and cannot drift from it.
+**One committed literal is the version; the changelog decides the bump.**
 
-### 1. The fragment type is the bump
+### 1. Version = one committed literal
+`{{VERSION_FILE}}` contains exactly `__version__ = "X.Y.Z"`. `pyproject.toml`
+declares `dynamic = ["version"]` and `[tool.hatch.version] path = "{{VERSION_FILE}}"`
+so hatchling reads that literal. No hatch-vcs, no setuptools-scm, no
+semantic-release, no static `[project].version`.
 
-`changelog.d/<issue>.<type>.md`; the highest-severity type accumulated since the
-last release decides the bump:
+### 2. Changelog = towncrier
+Per PR, add `changelog.d/<slug>.<type>.md` (types: `breaking`, `security`,
+`added`, `changed`, `deprecated`, `removed`, `fixed`). Never edit `CHANGELOG.md`
+directly.
 
-| Fragment type | Bump |
-|---|---|
-| `breaking`, `removed` | major |
-| `added`, `changed`, `deprecated` | minor |
-| `security`, `fixed` | patch |
+### 3. `tools/release.py` cuts a release
+It computes the next version from the pending fragment **types** (rubric below),
+writes it into `{{VERSION_FILE}}`, and runs `towncrier build` (which writes the
+`CHANGELOG.md` section and consumes the fragments). No git ops — you commit on a
+`release/vX.Y.Z` branch and open a PR to `main`.
 
-Pre-1.0 (`0.y.z`): a major-level change bumps the **minor** (SemVer 0.x rule). A
-`breaking` fragment type exists precisely so majors are explicit — Keep-a-Changelog
-categories alone don't unambiguously signal a breaking change.
+### 4. `release.yml` (on push to `main`)
+- **decide**: **skip if any typed fragment is still uncollated** (a real release
+  collates first via `tools/release.py`; this blocks the first `main` promotion
+  from publishing before a release is cut). Otherwise read `__version__`; release
+  only if it has **no `vX.Y.Z` tag** and a matching `## [X.Y.Z]` section exists in
+  `CHANGELOG.md` (so an un-changelogged version, including the unreleased `0.0.0`,
+  never ships).
+- **release** (`environment: pypi`, `contents: write` + `id-token: write`): create
+  and push the `vX.Y.Z` tag, build sdist + wheel, generate the SBOM, extract the
+  `## [X.Y.Z]` changelog section as the notes, publish to PyPI via OIDC, and cut
+  the GitHub Release. **Only a tag is pushed — never a commit to `main`**, so no
+  bot/PAT/deploy-key/bypass is needed. Third-party actions are SHA-pinned.
 
-`tools/release_bump.py` is the single implementation: `next` (compute from
-fragments + last tag), `current` (read `CHANGELOG.md`'s newest `## [X.Y.Z]`), and
-`notes` (that section's body). It has no commit-message input.
+### 5. Rubric
+Pre-1.0 (`major == 0`): any `added`/`changed`/`removed`/`deprecated`/`breaking` →
+minor; `fixed`/`security` → patch. `major >= 1`: `removed`/`breaking` → major,
+`added`/`changed`/`deprecated` → minor, `fixed`/`security` → patch. (`breaking` is
+effectively capped to minor until you cut 1.0.)
 
-### 2. `CHANGELOG.md`'s newest section IS the release version
+### 6. One-time per repo (owner)
+Register a PyPI trusted publisher (project `{{DIST}}`, owner, repo, workflow
+`release.yml`, environment `pypi`) and create a GitHub environment named `pypi`.
 
-Cutting a release writes the version into `CHANGELOG.md` (via towncrier), and the
-release reads it back from there and tags it. One number, one source.
-
-### 3. Two workflows, `main` stays protected
-
-- **Prepare release** (`workflow_dispatch`): computes the next version from the
-  fragments, runs `towncrier build --version <that>`, and opens a `release/vX.Y.Z`
-  PR into `dev`. This is the deliberate "cut a release" action.
-- **Release** (`on: push: main`): first, a **guard** — if typed fragments are
-  still pending (Prepare Release hasn't collated them), it **skips**, so a stale
-  changelog can never be published regardless of promotion order. Otherwise it
-  reads `CHANGELOG.md`'s newest version; if it has no tag yet, it **creates the
-  tag** (`refs/tags/*` is not branch-protected — no commit is ever pushed to
-  `main`), builds the sdist + wheel (hatch-vcs derives the version from the tag),
-  **asserts the built version equals the changelog version** (final anti-drift
-  check), attaches a CycloneDX SBOM, publishes to PyPI via OIDC, and cuts a GitHub
-  Release whose notes are the changelog section.
-
-The first release is not special: there is no seed and no manual tag — you run
-Prepare Release for `0.1.0` exactly as for every later version.
-
-So: fragments → (prepare) `CHANGELOG.md [X.Y.Z]` → (release) tag `vX.Y.Z` → build
-version `X.Y.Z`. Every step reads the same number; drift is impossible by
-construction.
-
-## The two vocabularies (don't confuse them)
-
-- **Changelog fragment types** (`added`/`fixed`/`breaking`/…) → decide the
-  **version**.
-- **Conventional PR titles** (`feat:`/`fix:`/…, enforced by the PR-title guard) →
-  keep the git history tidy and ban agent-branding prefixes. They no longer drive
-  the version.
+## Release flow
+`python tools/release.py` → `release/vX.Y.Z` branch → PR to `main` → merge →
+`release.yml` tags and publishes. The **first release is not special** — you run
+`tools/release.py` for `0.1.0` exactly as for every later version. For dependent
+repos, publish the dependency first (e.g. `aces-sdl` before `aptl`).
 
 ## Consequences
-
-- The version and `CHANGELOG.md` cannot drift — the version is derived from the
-  changelog.
-- Releasing is a deliberate act (run "Prepare release"), which matches towncrier's
-  model; there is no accidental auto-release from an unrelated merge.
-- Every user-visible change must add a fragment, or it won't appear in the
-  changelog or move the version. Repo-internal changes (CI, tests, refactors)
-  add none and don't release.
-- `main` stays protected; the release only ever pushes a tag.
+- The version is one literal; the build, the tag, and the changelog all read the
+  same number — drift is structurally impossible.
+- No seeding, no pre-tag, no bypass; `main` only ever receives a tag.
+- Every user-visible change must add a fragment or it neither appears in the
+  changelog nor moves the version.

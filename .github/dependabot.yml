@@ -1,0 +1,23 @@
+version: 2
+updates:
+  # Keep SHA-pinned GitHub Actions patched (ADR 0006 supply-chain).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    target-branch: dev
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+
+  # Runtime + tooling Python dependencies.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    target-branch: dev
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope

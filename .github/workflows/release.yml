@@ -36,16 +36,43 @@ jobs:
       id-token: write   # OIDC trusted publishing to PyPI
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
 
+      - name: Gate the first release behind an explicit force
+        id: gate
+        run: |
+          if git tag --list 'v*' | grep -q .; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"   # tags exist: normal auto-release
+          elif [ -n "${{ github.event.inputs.force }}" ]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"   # first release, explicitly forced
+          else
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No release tags yet and no force input - skipping. Run this workflow manually with force=minor to cut the first release."
+          fi
+
       - name: Python Semantic Release (version + tag + GitHub Release + build)
         id: release
-        uses: python-semantic-release/python-semantic-release@v10.6.0
+        if: steps.gate.outputs.proceed == 'true'
+        uses: python-semantic-release/python-semantic-release@37a30a7987cfebb6d49240bf1c4e9cd9817d0673 # v10.6.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           force: ${{ github.event.inputs.force }}
+          # Tag-only: never push a commit to the protected main branch. With
+          # commit=false PSR makes no commit, so the branch push is a no-op and
+          # only the tag (refs/tags/*, not branch-protected) is pushed. The
+          # GitHub Release carries the notes; no CHANGELOG.md file is committed.
+          commit: "false"
+          changelog: "false"
+          tag: "true"
+          push: "true"
+          vcs_release: "true"
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
 
       - name: Generate CycloneDX SBOM
         if: steps.release.outputs.released == 'true'
@@ -67,13 +94,13 @@ jobs:
 
       - name: Publish to PyPI (OIDC trusted publishing)
         if: steps.release.outputs.released == 'true'
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
         with:
           packages-dir: dist
 
       - name: Attach distributions to the GitHub Release
         if: steps.release.outputs.released == 'true'
-        uses: python-semantic-release/publish-action@v10.6.0
+        uses: python-semantic-release/publish-action@4f3c5d7f5caddf6535050c4bcb55f033f000a7dd # v10.6.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.release.outputs.tag }}

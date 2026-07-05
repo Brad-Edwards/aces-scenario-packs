@@ -25,7 +25,7 @@ What it enforces / produces:
     participant artifact. Paths are containment-checked; ``..`` / absolute /
     symlink-escape paths are rejected.
   * **metadata** — emit versioned ``release.yaml``: pack version, the
-    scenario-pack contract version from ``scenarios/README.md`` plus a digest,
+    scenario-pack contract version from the bundled contract plus a digest,
     the supported delivery profiles, compatible runtime profiles, and a
     *bounded* provenance summary (counts and review-gate statuses only).
   * **smoke** — prove delivery-bundle selection changes participant exposure and

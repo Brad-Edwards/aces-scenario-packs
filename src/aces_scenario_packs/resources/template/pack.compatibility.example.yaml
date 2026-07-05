@@ -5,7 +5,7 @@ pack:
   version: 1.0.0
   status: golden
   source:
-    requirement: PEN-0001
+    requirement: EXR-0001
     issues: [44]
     upstream_references:
       - https://github.com/Brad-Edwards/aces-scenario-packs/issues/44

@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import os
+import sys
 import unittest
 
 import yaml
@@ -24,6 +25,8 @@ def _load_model_module():
     spec = importlib.util.spec_from_file_location("oracle_model_undertest", _MODEL_PATH)
     mod = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
+    # Register before exec so dataclass annotation resolution can find the module.
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

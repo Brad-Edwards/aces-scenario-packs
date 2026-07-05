@@ -54,7 +54,8 @@ import yaml
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
-import content_ci as cc  # sibling helper module (imported after the sys.path insert above)
+# content_ci is a sibling module, imported after the sys.path insert above.
+import content_ci as cc
 
 REPO = cc._REPO
 SCEN = cc.SCEN
@@ -142,14 +143,11 @@ class PackContracts(object):
         """Read a pack-relative YAML file, validated at the open() sink."""
         try:
             path = _resolved_within(self._root_real, rel)
-        except ValueError:
-            return None
-        if not os.path.isfile(path):
-            return None
-        try:
+            if not os.path.isfile(path):
+                return None
             with open(path, "r", encoding="utf-8") as fh:
                 return yaml.safe_load(fh)
-        except (OSError, yaml.YAMLError):
+        except (ValueError, OSError, yaml.YAMLError):
             return None
 
     def _read_pointer(self, rel: object) -> object:
@@ -290,9 +288,8 @@ def _safe_pack_path(pack_root: str, rel: str) -> tuple[bool, str]:
         return False, "is absolute or empty"
     if not cc._path_inside_pack(pack_root, rel):
         return False, "escapes pack root"
-    if not _within(os.path.realpath(pack_root), os.path.join(pack_root, rel)):
-        return False, "resolves outside pack root (symlink escape)"
-    return True, ""
+    within = _within(os.path.realpath(pack_root), os.path.join(pack_root, rel))
+    return (True, "") if within else (False, "resolves outside pack root (symlink escape)")
 
 
 def _safe_member(path: str, root_real: str) -> bool:
@@ -365,18 +362,15 @@ def _stage_boundary_row(pc: "PackContracts", pack_root: str, group: str, tier: s
                         row: object, staging: str,
                         tier_stats: dict[str, dict[str, object]]) -> list[str]:
     """Stage boundary row."""
-    if not isinstance(row, dict):
-        return []
-    rel = row.get("path")
-    export = row.get("export")
+    rel = row.get("path") if isinstance(row, dict) else None
     if not isinstance(rel, str):
         return []
     ok, why = _safe_pack_path(pack_root, rel)
-    if not ok:
-        return [f"{pc.name}: boundary {group} path {rel} {why}"]
     src = os.path.join(pack_root, rel)
-    if not os.path.exists(src):
-        return [f"{pc.name}: boundary {group} path {rel} does not exist"]
+    problem = why if not ok else ("does not exist" if not os.path.exists(src) else None)
+    if problem:
+        return [f"{pc.name}: boundary {group} path {rel} {problem}"]
+    export = row.get("export")
     copied, stage_errors = _stage(
         src, os.path.join(staging, tier, os.path.normpath(rel)), pack_root)
     tier_stats[tier]["file_count"] += copied
@@ -507,6 +501,21 @@ def _git_commit(repo_root: str) -> str | None:
         return None
 
 
+def _supported_bundle_ids(compat: dict[str, object]) -> list[str]:
+    """Supported bundle ids."""
+    return sorted(
+        b.get("bundle_id") for b in (compat.get("delivery_bundles") or [])
+        if isinstance(b, dict) and b.get("status") == "supported" and b.get("bundle_id"))
+
+
+def _runtime_profile_ids(compat: dict[str, object]) -> list[str]:
+    """Runtime profile ids."""
+    return sorted(
+        rp.get("profile_id") for rp in (compat.get("runtime_profiles") or [])
+        if isinstance(rp, dict) and rp.get("status") in ("supported", "required")
+        and rp.get("profile_id"))
+
+
 def release_metadata(pack_root: str, *, include_build_provenance: bool = False,
                      repo_root: str = REPO) -> dict[str, object]:
     """Release metadata."""
@@ -514,13 +523,8 @@ def release_metadata(pack_root: str, *, include_build_provenance: bool = False,
     compat = pc.compatibility or {}
     version, digest = load_contract_version()
 
-    supported = sorted(
-        b.get("bundle_id") for b in (compat.get("delivery_bundles") or [])
-        if isinstance(b, dict) and b.get("status") == "supported" and b.get("bundle_id"))
-    runtime = sorted(
-        rp.get("profile_id") for rp in (compat.get("runtime_profiles") or [])
-        if isinstance(rp, dict) and rp.get("status") in ("supported", "required")
-        and rp.get("profile_id"))
+    supported = _supported_bundle_ids(compat)
+    runtime = _runtime_profile_ids(compat)
 
     metadata: dict[str, object] = {
         "metadata_schema_version": METADATA_SCHEMA_VERSION,
@@ -573,6 +577,30 @@ def bundle_participant_views(pack_root: str) -> dict[str, list[str]]:
     return views
 
 
+def _missing_entrypoints(pc: "PackContracts", pack_root: str, bid: object,
+                         row: dict[str, object]) -> list[str]:
+    """Missing entrypoints."""
+    out: list[str] = []
+    for key in ("shared_includes", "participant_entrypoints", "operator_entrypoints"):
+        for entry in (row.get(key) or []):
+            if isinstance(entry, str) and not os.path.exists(
+                    os.path.join(pack_root, "profiles", entry)):
+                out.append(f"{pc.name}: bundle {bid} missing entrypoint {entry}")
+    return out
+
+
+def _operator_under_participant(pc: "PackContracts", bid: object,
+                                row: dict[str, object]) -> list[str]:
+    """Operator under participant."""
+    out: list[str] = []
+    for entry in (row.get("operator_entrypoints") or []):
+        if isinstance(entry, str) and _under_participant(entry):
+            out.append(
+                f"{pc.name}: bundle {bid} operator entrypoint {entry} sits under a "
+                "participant root")
+    return out
+
+
 def _smoke_bundle(pc: "PackContracts", pack_root: str, bundle: dict[str, object],
                   rows: dict[str, dict[str, object]]) -> list[str]:
     """Check one supported bundle's required entrypoints exist and that its
@@ -581,18 +609,8 @@ def _smoke_bundle(pc: "PackContracts", pack_root: str, bundle: dict[str, object]
     row = rows.get(bid)
     if row is None:
         return [f"{pc.name}: supported bundle {bid} missing from profiles/bundles.yaml"]
-    failures: list[str] = []
-    for key in ("shared_includes", "participant_entrypoints", "operator_entrypoints"):
-        for entry in (row.get(key) or []):
-            if isinstance(entry, str) and not os.path.exists(
-                    os.path.join(pack_root, "profiles", entry)):
-                failures.append(f"{pc.name}: bundle {bid} missing entrypoint {entry}")
-    for entry in (row.get("operator_entrypoints") or []):
-        if isinstance(entry, str) and _under_participant(entry):
-            failures.append(
-                f"{pc.name}: bundle {bid} operator entrypoint {entry} sits under a "
-                "participant root")
-    return failures
+    return (_missing_entrypoints(pc, pack_root, bid, row)
+            + _operator_under_participant(pc, bid, row))
 
 
 def _smoke_view_leaks(pc: "PackContracts", pack_root: str,
@@ -684,6 +702,20 @@ def _report(label: str, failures: list[str]) -> int:
     return 0
 
 
+def _cmd_metadata(args: argparse.Namespace) -> int:
+    """Cmd metadata."""
+    print(yaml.safe_dump(release_metadata(_resolve_pack(args.pack)), sort_keys=False))
+    return 0
+
+
+def _cmd_build(args: argparse.Namespace) -> int:
+    """Cmd build."""
+    _meta, failures = build_release(
+        _resolve_pack(args.pack), args.out,
+        include_build_provenance=args.build_provenance)
+    return _report("PACK BUILD", failures)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Command-line entry point."""
     parser = argparse.ArgumentParser(
@@ -701,22 +733,16 @@ def main(argv: list[str] | None = None) -> int:
     cp.add_argument("--pack")
     args = parser.parse_args(argv)
 
-    if args.cmd == "lint":
-        return _report("PACK LINT", lint_pack(_resolve_pack(args.pack)))
-    if args.cmd == "smoke":
-        return _report("PROFILE SMOKE", smoke_pack(_resolve_pack(args.pack)))
-    if args.cmd == "metadata":
-        print(yaml.safe_dump(release_metadata(_resolve_pack(args.pack)), sort_keys=False))
-        return 0
-    if args.cmd == "build":
-        _meta, failures = build_release(
-            _resolve_pack(args.pack), args.out,
-            include_build_provenance=args.build_provenance)
-        return _report("PACK BUILD", failures)
-    if args.cmd == "check":
-        packs = [args.pack] if args.pack else None
-        return _report("PACK RELEASE GATE", check(packs))
-    return 2
+    dispatch = {
+        "lint": lambda: _report("PACK LINT", lint_pack(_resolve_pack(args.pack))),
+        "smoke": lambda: _report("PROFILE SMOKE", smoke_pack(_resolve_pack(args.pack))),
+        "metadata": lambda: _cmd_metadata(args),
+        "build": lambda: _cmd_build(args),
+        "check": lambda: _report(
+            "PACK RELEASE GATE", check([args.pack] if args.pack else None)),
+    }
+    handler = dispatch.get(args.cmd)
+    return handler() if handler else 2
 
 
 if __name__ == "__main__":

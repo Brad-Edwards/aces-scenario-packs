@@ -40,15 +40,3 @@ repository and in the ACES core repository.
 - [Tools placeholder](tools/README.md)
 - [Examples placeholder](examples/README.md)
 
-## Ground Control
-
-This repository is managed as Ground Control project `aces-scenario-packs`.
-Agents and maintainers should read `.ground-control.yaml` before doing issue,
-requirement, or implementation work.
-
-Local verification:
-
-```sh
-python3 -m unittest discover -s tests
-python3 -m compileall tests
-```

@@ -76,7 +76,6 @@ except PackageNotFoundError:
 # pyproject.toml
 [tool.semantic_release]
 tag_format = "v{version}"
-commit = false                 # do NOT push a commit to protected main; tag only
 allow_zero_version = true
 major_on_zero = false          # pre-1.0: breaking -> minor, not major
 build_command = "python -m pip install build && python -m build"
@@ -85,9 +84,13 @@ build_command = "python -m pip install build && python -m build"
 match = "main"
 ```
 
-Because `commit = false`, PSR tags `main`'s current HEAD and pushes only the tag
-(tags are not branch-protected). The changelog is emitted to the **GitHub Release
-notes**, not committed to the repo.
+**Gotcha:** `commit`/`push`/`tag`/`changelog` are **not** pyproject keys — putting
+`commit = false` here is silently ignored and PSR will try to push a commit to
+`main` (rejected by branch protection). Set tag-only mode on the **action
+inputs** instead (see §3): `commit: "false"` (no commit → the branch push is a
+no-op, nothing is pushed to protected `main`), `push: "true"` (pushes only the
+tag — `refs/tags/*` is not branch-protected), `tag: "true"`, `vcs_release:
+"true"`, `changelog: "false"` (notes go in the GitHub Release, no committed file).
 
 ### 3. Release workflow — `on: push: [main]`
 
@@ -102,10 +105,13 @@ on:
     inputs: { force: { description: "force bump (patch|minor|major)", required: false } }
 concurrency: { group: release, cancel-in-progress: false }
 permissions: { contents: write, id-token: write }
-# steps: checkout(fetch-depth:0) -> python-semantic-release@v10 (id: release)
-#        -> if released: build SBOM + gh release upload
+# steps: checkout(fetch-depth:0)
+#        -> python-semantic-release@v10 (id: release) with tag-only inputs:
+#             commit: "false", changelog: "false", tag: "true", push: "true", vcs_release: "true"
+#        -> if released: setup-python + build SBOM + gh release upload
 #        -> if released: pypa/gh-action-pypi-publish (OIDC)
 #        -> if released: python-semantic-release/publish-action@v10 (attach dist/*)
+# Pin all third-party actions to a full commit SHA.
 ```
 
 `workflow_dispatch` with `force` bootstraps the very first release (see below)

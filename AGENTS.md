@@ -1,37 +1,36 @@
 # Agent Instructions
 
-This repository is the ACES companion repository for scenario-pack definition,
-authoring guidance, templates, schemas, tooling, examples, and migration
-planning.
-
-## Ground Control
-
-- Ground Control project id: `aces-scenario-packs`.
-- Read `.ground-control.yaml` before implementation work.
-- The repo-local plan rules live at `.gc/plan-rules.md`.
-- Requirement UIDs use the `ASP-####` prefix unless a future issue records a
-  different accepted scheme.
-- Keep GitHub issues and Ground Control requirements linked when work satisfies
-  a tracked requirement.
+This repository is the canonical home for the ACES scenario-pack definition,
+schemas, template, and authoring/validation tooling. It does not host actual
+scenario packs — those live in their own catalog repositories and consume this
+package.
 
 ## Repository Boundaries
 
-- Keep ACES core semantics in `Brad-Edwards/aces`.
-- Keep reusable scenario-pack structure, pack validation, templates, examples,
-  and authoring guidance here.
-- Do not move capture or inventory workflow assets here until the ownership
-  review issue is resolved.
-- Do not import downstream catalog names, paths, branch rules, labels, product
-  assumptions, or private deployment vocabulary into canonical docs.
+- ACES core semantics (the SDL) live in `Brad-Edwards/aces`.
+- The reusable scenario-pack definition, schemas, template, and
+  authoring/validation tooling live here.
+- Actual scenario packs live in their own catalog repos, not here.
+- Don't import downstream catalog names, paths, branch rules, labels, product
+  assumptions, or private deployment vocabulary into the canonical docs.
 
 ## Verification
 
-Before declaring repository work complete, run:
+Before declaring repository work complete, run (in a venv with `pip install -e .`):
 
 ```sh
-python3 -m unittest discover -s tests
-python3 -m compileall tests
+python -m unittest discover -s tests
+aces-pack-validate --repo .
+aces-pack-release check --all
+python3 -m compileall src tests
 ```
 
-When changing Ground Control metadata, also verify that
-`.ground-control.yaml`, `.mcp.json`, and `.gc/plan-rules.md` remain aligned.
+## Commits & releases
+
+- PR titles MUST be Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`,
+  `refactor:`, `test:`, `ci:`, `build:`); a required CI check enforces it.
+- The type is the release decision: `feat:`→minor, `fix:`→patch,
+  `feat!:`/`BREAKING CHANGE:`→major; docs/chore/test/ci/refactor/build don't
+  release. Never hand-edit a version — the git tag is the source of truth.
+- Squash-merge feature PRs into `dev`; promote `dev`→`main` with a merge/rebase.
+  See `docs/decisions/adrs/0006-conventional-commit-releases.md`.

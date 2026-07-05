@@ -2,32 +2,46 @@ schema_version: 1
 project: aces-scenario-packs
 github_repo: Brad-Edwards/aces-scenario-packs
 short_code: ASP
+rules:
+  # Injected into /implement planning so the workflow follows the repo's release
+  # model (ADR 0006): conventional PR titles, never hand-bump a version, squash
+  # features / merge dev->main. The required "Conventional PR title" check is the
+  # hard gate; this makes the workflow produce conforming PRs.
+  plan_rules: .gc/plan-rules.md
 workflow:
   test_command: python3 -m unittest discover -s tests
-  completion_command: python3 -m unittest discover -s tests
-  lint_command: python3 -m compileall tests
-  format_command: python3 -m compileall tests
+  completion_command: python3 -m unittest discover -s tests && PYTHONPATH=src python3 -m aces_scenario_packs.content_ci --repo . && PYTHONPATH=src python3 -m aces_scenario_packs.release check --all
+  lint_command: python3 -m compileall src tests
+  format_command: python3 -m compileall src tests
+  # /implement validates the PR title against these Conventional Commit types
+  # (issue #896), matching the required "Conventional PR title" CI check. The type
+  # drives the release bump (ADR 0006), so the workflow produces a conforming
+  # title instead of failing the gate.
+  pr_title:
+    types: [feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert]
+    require_scope: false
 docs:
   adr_dir: docs/decisions/adrs/
-  workflow_reference: docs/repository-charter.md
+  workflow_reference: docs/scenario-packs.md
 example_paths:
-  source: tools/
+  source: src/aces_scenario_packs/
   test: tests/
 requirements:
   uid_examples:
     - ASP-0001
     - ASP-0002
-rules:
-  plan_rules: .gc/plan-rules.md
+sonarcloud:
+  project_key: Brad-Edwards_aces-scenario-packs
+  organization: brad-edwards
 architecture:
   vocabulary:
     patterns:
       - name: Companion contract repository
-        applies_to: scenario-pack specification and adoption support
-        example_path: docs/repository-charter.md
+        applies_to: scenario-pack definition and authoring tooling
+        example_path: docs/scenario-packs.md
     boundary_contract:
-      description: ACES core owns SDL semantics; this repository owns scenario-pack structure, validation, templates, and adoption guidance.
+      description: ACES core owns SDL semantics; this repository owns the scenario-pack definition, schemas, template, and authoring/validation tooling. It does not host actual scenario packs.
     binding_adrs: []
     anti_recommendations:
-      - Do not move capture workflow assets before the ownership review is resolved.
+      - Do not host actual scenario packs here; this repo is the definition and tooling only.
       - Do not encode downstream catalog vocabulary into canonical pack terminology.

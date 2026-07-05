@@ -1,0 +1,66 @@
+# Compatibility projection for this pack. This file is static metadata for
+# catalog/package consumers; it does not provision, score, observe, or run the
+# scenario. See ../pack-compatibility.schema.yaml.
+
+schema_version: 1
+pack:
+  name: <name>
+  title: "Human-readable title"
+  version: 0.1.0
+  status: draft
+  source:
+    requirement: null
+    issues: []
+    upstream_references: []
+
+artifact_boundaries:
+  participant_visible:
+    - path: README.md
+      export: public
+      description: Participant-safe overview once the placeholder is replaced.
+  operator_only:
+    - path: docs/golden-readiness-checklist.md
+      export: operator
+      description: Operator final-review checklist.
+  oracle_only: []
+  commercial: []
+
+runtime_profiles: []
+delivery_bundles: []
+platform_features: []
+assets: []
+
+scoring:
+  status: not_shipped
+  mode: none
+  references: []
+validation_oracle:
+  status: not_shipped
+  mode: none
+  references: []
+telemetry:
+  status: not_shipped
+  mode: none
+  references: []
+
+lifecycle:
+  reset:
+    status: not_shipped
+    references: []
+  rebuild:
+    status: not_shipped
+    references: []
+  teardown:
+    status: not_shipped
+    references: []
+
+operator_surfaces: []
+validation:
+  commands:
+    - id: scenario-content
+      command: python3 scripts/ci/scenario_content_ci.py
+      validates:
+        - manifest
+        - pack-layout
+        - leak-scan
+  gates: []

@@ -1,75 +1,38 @@
 name: Release
 
-# Release automation (ADR 0003 / 0004 / 0005).
+# Conventional-commit-driven release (ADR 0006, supersedes 0005).
 #
-# Two entry paths converge on one release job:
-#   1. Merge to main   — the primary path. When the packaged __version__ has no
-#      matching v<version> tag yet, this workflow creates and pushes that tag,
-#      then releases. Bump the version in the PR; merging cuts the release.
-#   2. Manual v* tag   — a backfill / re-run escape hatch. Pushing a semver tag
-#      releases that exact ref.
+# On every push to main, python-semantic-release inspects the Conventional Commit
+# messages since the last tag, computes the next SemVer, creates the tag + GitHub
+# Release (with generated notes), and builds the sdist + wheel. It is tag-only —
+# it never pushes a commit back to the protected main branch. The job then
+# attaches a CycloneDX SBOM (ADR 0004) and publishes to PyPI via OIDC trusted
+# publishing (no stored token).
 #
-# The release job builds sdist + wheel, generates a CycloneDX SBOM, publishes to
-# PyPI via OIDC trusted publishing (no stored token), and cuts a GitHub Release
-# carrying the wheel, sdist, and SBOM.
+# workflow_dispatch bootstraps the first release and is the manual override:
+# run it with force=minor once after the first dev->main promotion to cut v0.1.0.
 on:
   push:
     branches:
       - main
-    tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force a bump when no releasable commits exist (patch|minor|major)"
+        required: false
+        default: ""
 
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
-  decide:
-    name: Decide whether to release
-    runs-on: ubuntu-latest
-    outputs:
-      release: ${{ steps.decide.outputs.release }}
-      tag: ${{ steps.decide.outputs.tag }}
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Determine release target
-        id: decide
-        run: |
-          set -euo pipefail
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            # Manual tag push: release exactly this ref.
-            echo "release=true" >> "$GITHUB_OUTPUT"
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-            echo "Manual tag ${GITHUB_REF_NAME}: releasing."
-            exit 0
-          fi
-          version="$(grep -oP '^__version__\s*=\s*"\K[^"]+' src/aces_scenario_packs/__init__.py || true)"
-          if [[ -z "${version}" ]]; then
-            echo "could not find __version__ in package __init__.py" >&2
-            exit 1
-          fi
-          tag="v${version}"
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
-            echo "release=false" >> "$GITHUB_OUTPUT"
-            echo "Tag ${tag} already exists: nothing to release."
-          else
-            echo "release=true" >> "$GITHUB_OUTPUT"
-            echo "Version ${version} is unreleased: will tag ${tag} and release."
-          fi
-
   release:
-    name: Build, publish, and release
-    needs: [decide]
-    if: needs.decide.outputs.release == 'true'
+    name: Release
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
-      contents: write   # push the release tag + create the GitHub Release
+      contents: write   # create the tag + GitHub Release
       id-token: write   # OIDC trusted publishing to PyPI
     steps:
       - name: Check out repository
@@ -77,46 +40,40 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create and push release tag
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        env:
-          TAG: ${{ needs.decide.outputs.tag }}
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "${TAG}" -m "Release ${TAG}"
-          git push origin "${TAG}"
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Python Semantic Release (version + tag + GitHub Release + build)
+        id: release
+        uses: python-semantic-release/python-semantic-release@v10.6.0
         with:
-          python-version: "3.12"
-
-      - name: Build sdist + wheel
-        run: |
-          python -m pip install --upgrade build
-          python -m build --outdir dist
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          force: ${{ github.event.inputs.force }}
 
       - name: Generate CycloneDX SBOM
+        if: steps.release.outputs.released == 'true'
         run: |
-          python -m pip install dist/*.whl
-          python -m pip install cyclonedx-bom
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install dist/*.whl cyclonedx-bom
           mkdir -p sbom
           cyclonedx-py environment \
             --output-format JSON \
             --output-file sbom/aces-scenario-packs.cdx.json
 
+      - name: Attach SBOM to the GitHub Release
+        if: steps.release.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: gh release upload "${TAG}" sbom/aces-scenario-packs.cdx.json --clobber
+
       - name: Publish to PyPI (OIDC trusted publishing)
+        if: steps.release.outputs.released == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Attach distributions to the GitHub Release
+        if: steps.release.outputs.released == 'true'
+        uses: python-semantic-release/publish-action@v10.6.0
         with:
-          tag_name: ${{ needs.decide.outputs.tag }}
-          files: |
-            dist/*
-            sbom/*
-          generate_release_notes: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ steps.release.outputs.tag }}

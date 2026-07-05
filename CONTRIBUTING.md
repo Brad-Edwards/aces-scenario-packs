@@ -12,6 +12,16 @@ When you work on a change:
   does not host packs.
 - Run the verification commands in `AGENTS.md` before opening a PR.
 
+## Commit messages & releases
+
+PR titles must follow [Conventional Commits](https://www.conventionalcommits.org)
+(`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`, `ci:`, `build:`) — a
+CI check enforces this. The type drives the release: `feat:`→minor, `fix:`→patch,
+`feat!:`/`BREAKING CHANGE:`→major; `docs`/`chore`/`test`/`ci`/`refactor`/`build`
+don't release. Feature PRs are squash-merged, so the title *is* the commit — get
+it right. Releases are automatic when `dev` is promoted to `main`; you never edit
+a version. See [ADR 0006](docs/decisions/adrs/0006-conventional-commit-releases.md).
+
 Changes to the public contract or schemas should include the rationale, the
 compatibility impact, and how you validated them. If you're moving content in
 from another repository, note the source repo and paths, and any scrub the

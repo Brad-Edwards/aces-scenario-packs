@@ -61,14 +61,24 @@ aces-pack-validate --repo .
 aces-pack-release check --all
 ```
 
-Build and release are documented in
-[ADR 0003](docs/decisions/adrs/0003-build-and-release-model.md) and
-[ADR 0005](docs/decisions/adrs/0005-automatic-release-on-merge-to-main.md).
-**To cut a release, bump `__version__` in `src/aces_scenario_packs/__init__.py`
-in your PR** (the single version source of truth); merging to `main` is the
-release action. On that merge the workflow tags `v<version>`, builds the sdist +
-wheel, generates a CycloneDX SBOM, publishes to PyPI via OIDC trusted publishing,
-and cuts a GitHub Release. If the version is unchanged the merge does not
-release. Pushing a `v*` tag by hand remains supported for backfills.
+Releases are **automatic** and driven by
+[Conventional Commits](https://www.conventionalcommits.org)
+(see [ADR 0006](docs/decisions/adrs/0006-conventional-commit-releases.md)). You
+never hand-edit a version — the git tag is the source of truth, and
+python-semantic-release computes the next version from commit types:
+
+| Change (commit / PR title) | Releases? | Bump |
+| --- | --- | --- |
+| `fix:` | yes | patch |
+| `feat:` | yes | minor |
+| `feat!:` / `BREAKING CHANGE:` | yes | major (pre-1.0: minor) |
+| `docs:` `chore:` `test:` `ci:` `refactor:` `build:` | no | — |
+
+Rule of thumb: **release when a consumer would observe the change; hold when it's
+repo-internal.** Merge freely into `dev`; **promoting `dev`→`main` cuts the
+release** — the workflow tags `v<version>`, builds the sdist + wheel, generates a
+CycloneDX SBOM, publishes to PyPI via OIDC, and creates the GitHub Release. A CI
+check requires PR titles to be conventional; feature PRs are squash-merged, and
+`dev`→`main` uses a merge/rebase (never squash).
 
 Licensed under the MIT License (see [`LICENSE`](LICENSE)).

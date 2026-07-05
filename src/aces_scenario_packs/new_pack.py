@@ -28,6 +28,7 @@ _TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resour
 
 
 def repo_root(start: str | None = None) -> str:
+    """Repo root."""
     here = os.path.abspath(start or os.getcwd())
     while True:
         if os.path.exists(os.path.join(here, ".git")) and \
@@ -40,10 +41,12 @@ def repo_root(start: str | None = None) -> str:
 
 
 def title_from_pack_id(pack_id: str) -> str:
+    """Title from pack id."""
     return " ".join(part.capitalize() for part in pack_id.split("-"))
 
 
 def validate_pack_id(pack_id: str) -> None:
+    """Validate pack id."""
     if not PACK_ID_RE.fullmatch(pack_id):
         raise SystemExit(
             "pack id must be lowercase kebab-case, start/end with a letter or "
@@ -51,6 +54,7 @@ def validate_pack_id(pack_id: str) -> None:
 
 
 def ensure_inside(parent: str, child: str) -> None:
+    """Ensure inside."""
     parent_abs = os.path.abspath(parent)
     child_abs = os.path.abspath(child)
     if os.path.commonpath([parent_abs, child_abs]) != parent_abs:
@@ -58,6 +62,7 @@ def ensure_inside(parent: str, child: str) -> None:
 
 
 def scenario_pack_target(scenarios_root: str, pack_id: str) -> str:
+    """Scenario pack target."""
     validate_pack_id(pack_id)
     scenarios = Path(scenarios_root).resolve(strict=True)
     target = (scenarios / pack_id).resolve(strict=False)
@@ -67,6 +72,7 @@ def scenario_pack_target(scenarios_root: str, pack_id: str) -> str:
 
 
 def checked_pack_root(pack_root: str) -> Path:
+    """Checked pack root."""
     root = Path(pack_root).resolve(strict=True)
     validate_pack_id(root.name)
     return root
@@ -74,6 +80,7 @@ def checked_pack_root(pack_root: str) -> Path:
 
 @contextlib.contextmanager
 def pack_root_cwd(pack_root: str):
+    """Pack root cwd."""
     root = checked_pack_root(pack_root)
     original = os.getcwd()
     os.chdir(root)
@@ -84,12 +91,14 @@ def pack_root_cwd(pack_root: str):
 
 
 def apply_replacements(body: str, replacements: dict[str, str]) -> str:
+    """Apply replacements."""
     for old, new in replacements.items():
         body = body.replace(old, new)
     return body
 
 
 def replace_readme_text(pack_root: str, replacements: dict[str, str]) -> None:
+    """Replace readme text."""
     with pack_root_cwd(pack_root):
         with open(README_FILE, "r", encoding="utf-8") as fh:
             body = fh.read()
@@ -98,6 +107,7 @@ def replace_readme_text(pack_root: str, replacements: dict[str, str]) -> None:
 
 
 def replace_pack_yaml_text(pack_root: str, replacements: dict[str, str]) -> None:
+    """Replace pack yaml text."""
     with pack_root_cwd(pack_root):
         with open(PACK_FILE, "r", encoding="utf-8") as fh:
             body = fh.read()
@@ -107,6 +117,7 @@ def replace_pack_yaml_text(pack_root: str, replacements: dict[str, str]) -> None
 
 def replace_optional_file_text(pack_root: str, rel_path: str,
                                replacements: dict[str, str]) -> None:
+    """Replace optional file text."""
     with pack_root_cwd(pack_root):
         if not os.path.isfile(rel_path):
             return
@@ -117,6 +128,7 @@ def replace_optional_file_text(pack_root: str, rel_path: str,
 
 
 def append_issue_provenance(pack_root: str, issue: int) -> None:
+    """Append issue provenance."""
     with pack_root_cwd(pack_root):
         with open(README_FILE, "a", encoding="utf-8") as fh:
             fh.write(f"\n## Provenance\n\nCreated from GitHub issue #{issue}.\n")
@@ -124,6 +136,7 @@ def append_issue_provenance(pack_root: str, issue: int) -> None:
 
 def scaffold_pack(repo: str, pack_id: str, title: str, description: str,
                   requirement: str | None, issue: int | None) -> str:
+    """Scaffold pack."""
     scenarios = os.path.join(repo, "scenarios")
     template = _TEMPLATE_DIR
     target = scenario_pack_target(scenarios, pack_id)
@@ -161,6 +174,7 @@ def scaffold_pack(repo: str, pack_id: str, title: str, description: str,
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """Parse args."""
     parser = argparse.ArgumentParser(
         description="Create scenarios/<pack-id>/ from scenarios/_template.")
     parser.add_argument("pack_id", help="lowercase kebab-case scenario pack id")
@@ -176,6 +190,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point."""
     args = parse_args(argv or sys.argv[1:])
     root = repo_root(args.repo)
     title = args.title or title_from_pack_id(args.pack_id)

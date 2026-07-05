@@ -130,6 +130,7 @@ class Issue:
 
     def __init__(self, object_type: str, object_id: str, field: str,
                  invariant: str, detail: str):
+        """Initialize the instance."""
         self.object_type = object_type
         self.object_id = object_id
         self.field = field
@@ -137,6 +138,7 @@ class Issue:
         self.detail = detail
 
     def __str__(self) -> str:
+        """Return the string representation."""
         target = self.object_type
         if self.object_id:
             target += f":{self.object_id}"
@@ -149,6 +151,7 @@ class OracleValidationError(Exception):
     """Raised when rendering is requested for an invalid oracle artifact."""
 
     def __init__(self, issues: list[Issue]):
+        """Initialize the instance."""
         self.issues = issues
         super().__init__(
             f"{len(issues)} oracle validation issue(s):\n  "
@@ -158,6 +161,7 @@ class OracleValidationError(Exception):
 
 def _unknown(issues: list[Issue], obj: Any, allowed: set[str],
              object_type: str, object_id: str) -> None:
+    """Unknown."""
     if not isinstance(obj, dict):
         return
     for key in obj:
@@ -168,6 +172,7 @@ def _unknown(issues: list[Issue], obj: Any, allowed: set[str],
 
 def _require(issues: list[Issue], obj: dict[str, Any], fields: list[str],
              object_type: str, object_id: str) -> None:
+    """Require."""
     for field in fields:
         if field not in obj or obj.get(field) in (None, "", []):
             issues.append(Issue(object_type, object_id, field, "required",
@@ -176,6 +181,7 @@ def _require(issues: list[Issue], obj: dict[str, Any], fields: list[str],
 
 def _as_mapping(issues: list[Issue], value: Any, object_type: str,
                 object_id: str) -> dict[str, Any]:
+    """As mapping."""
     if isinstance(value, dict):
         return value
     issues.append(Issue(object_type, object_id, "", "type_error",
@@ -185,6 +191,7 @@ def _as_mapping(issues: list[Issue], value: Any, object_type: str,
 
 def _as_list(issues: list[Issue], value: Any, object_type: str,
              object_id: str, field: str) -> list[Any]:
+    """As list."""
     if value is None:
         return []
     if isinstance(value, list):
@@ -196,6 +203,7 @@ def _as_list(issues: list[Issue], value: Any, object_type: str,
 
 def _as_str_list(issues: list[Issue], value: Any, object_type: str,
                  object_id: str, field: str) -> list[str]:
+    """As str list."""
     rows = _as_list(issues, value, object_type, object_id, field)
     out: list[str] = []
     for idx, item in enumerate(rows):
@@ -208,11 +216,13 @@ def _as_str_list(issues: list[Issue], value: Any, object_type: str,
 
 
 def _valid_ident(value: Any) -> bool:
+    """Valid ident."""
     return isinstance(value, str) and bool(_IDENT_RE.match(value))
 
 
 def _validate_ident(issues: list[Issue], value: Any, object_type: str,
                     object_id: str, field: str) -> None:
+    """Validate ident."""
     if value in (None, ""):
         return
     if not _valid_ident(value):
@@ -222,6 +232,7 @@ def _validate_ident(issues: list[Issue], value: Any, object_type: str,
 
 def _require_text(issues: list[Issue], obj: dict[str, Any], object_type: str,
                   object_id: str, field: str, detail: str) -> None:
+    """Require text."""
     value = obj.get(field)
     if not isinstance(value, str) or not value.strip():
         issues.append(Issue(object_type, object_id, field, "required", detail))
@@ -229,6 +240,7 @@ def _require_text(issues: list[Issue], obj: dict[str, Any], object_type: str,
 
 def _record_unique(issues: list[Issue], seen: set[str], value: str,
                    object_type: str, field: str) -> None:
+    """Record unique."""
     if value in seen:
         issues.append(Issue(object_type, value, field, "duplicate_id",
                             "identifier must be unique"))
@@ -236,6 +248,7 @@ def _record_unique(issues: list[Issue], seen: set[str], value: str,
 
 
 def _path_is_relative(path: str) -> bool:
+    """Path is relative."""
     if not path or os.path.isabs(path) or "\\" in path:
         return False
     norm = os.path.normpath(path)
@@ -243,16 +256,19 @@ def _path_is_relative(path: str) -> bool:
 
 
 def _norm_path(path: str) -> str:
+    """Norm path."""
     return os.path.normpath(path).replace("\\", "/").rstrip("/")
 
 
 def _paths_overlap(left: str, right: str) -> bool:
+    """Paths overlap."""
     a = _norm_path(left)
     b = _norm_path(right)
     return a == b or a.startswith(b + "/") or b.startswith(a + "/")
 
 
 def _validate_paths(issues: list[Issue], rows: list[Any], object_type: str) -> list[str]:
+    """Validate paths."""
     paths: list[str] = []
     seen: set[str] = set()
     for idx, raw in enumerate(rows):
@@ -275,6 +291,7 @@ def _validate_paths(issues: list[Issue], rows: list[Any], object_type: str) -> l
 
 
 def _validate_top(data: dict[str, Any], issues: list[Issue]) -> None:
+    """Validate top."""
     _unknown(issues, data, TOP_LEVEL_KEYS, "oracle", "root")
     _require(issues, data, [
         "schema_version", "oracle_id", "scenario", "visibility", "validator",
@@ -289,6 +306,7 @@ def _validate_top(data: dict[str, Any], issues: list[Issue]) -> None:
 
 
 def _validate_scenario(data: dict[str, Any], issues: list[Issue]) -> None:
+    """Validate scenario."""
     scenario = _as_mapping(issues, data.get("scenario"), "scenario", "")
     _unknown(issues, scenario, SCENARIO_KEYS, "scenario", str(scenario.get("id", "")))
     _require(issues, scenario, ["id", "title"], "scenario", str(scenario.get("id", "")))
@@ -300,6 +318,7 @@ def _validate_scenario(data: dict[str, Any], issues: list[Issue]) -> None:
 
 
 def _validate_visibility(data: dict[str, Any], issues: list[Issue]) -> None:
+    """Validate visibility."""
     visibility = _as_mapping(issues, data.get("visibility"), "visibility", "")
     _unknown(issues, visibility, VISIBILITY_KEYS, "visibility", "")
     _require(issues, visibility, ["oracle_roots", "participant_roots"],
@@ -327,6 +346,7 @@ def _validate_visibility(data: dict[str, Any], issues: list[Issue]) -> None:
 
 
 def _validate_validator(data: dict[str, Any], issues: list[Issue]) -> None:
+    """Validate validator."""
     validator = _as_mapping(issues, data.get("validator"), "validator", "")
     _unknown(issues, validator, VALIDATOR_KEYS, "validator", "")
     _require(issues, validator, ["idempotent", "mutates_scenario_state",
@@ -349,6 +369,7 @@ def _validate_validator(data: dict[str, Any], issues: list[Issue]) -> None:
 
 
 def _validate_consumers(data: dict[str, Any], issues: list[Issue]) -> set[str]:
+    """Validate consumers."""
     ids: set[str] = set()
     consumer_types: set[str] = set()
     for idx, raw in enumerate(_as_list(issues, data.get("consumers"),
@@ -374,6 +395,7 @@ def _validate_consumers(data: dict[str, Any], issues: list[Issue]) -> set[str]:
 
 def _validate_evidence(issues: list[Issue], raw: Any, owner: str,
                        evidence_ids: set[str]) -> str | None:
+    """Validate evidence."""
     obj = _as_mapping(issues, raw, "evidence", owner)
     eid = str(obj.get("id", owner))
     _unknown(issues, obj, EVIDENCE_KEYS, "evidence", eid)
@@ -403,6 +425,7 @@ def _validate_evidence(issues: list[Issue], raw: Any, owner: str,
 
 def _validate_failure(issues: list[Issue], raw: Any, owner: str,
                       failure_ids: set[str]) -> str | None:
+    """Validate failure."""
     obj = _as_mapping(issues, raw, "failure_state", owner)
     fid = str(obj.get("id", owner))
     _unknown(issues, obj, FAILURE_KEYS, "failure_state", fid)
@@ -420,6 +443,7 @@ def _validate_failure(issues: list[Issue], raw: Any, owner: str,
 
 def _validate_state_field(issues: list[Issue], obj: dict[str, Any],
                           object_type: str, object_id: str, field: str) -> None:
+    """Validate state field."""
     value = obj.get(field)
     if value and not (isinstance(value, str) and _STATE_RE.match(value)):
         issues.append(Issue(object_type, object_id, field, "state_format",
@@ -428,6 +452,7 @@ def _validate_state_field(issues: list[Issue], obj: dict[str, Any],
 
 def _validate_step_id(issues: list[Issue], obj: dict[str, Any], sid: str,
                       step_ids: set[str]) -> None:
+    """Validate step id."""
     value = obj.get("id")
     if not isinstance(value, str):
         return
@@ -439,6 +464,7 @@ def _validate_step_id(issues: list[Issue], obj: dict[str, Any], sid: str,
 
 def _validate_step_evidence(issues: list[Issue], obj: dict[str, Any],
                             sid: str, evidence_ids: set[str]) -> None:
+    """Validate step evidence."""
     required = _as_list(issues, obj.get("required_evidence", []),
                         "path_step", sid, "required_evidence")
     optional = _as_list(issues, obj.get("optional_evidence", []),
@@ -455,6 +481,7 @@ def _validate_step_evidence(issues: list[Issue], obj: dict[str, Any],
 
 def _validate_step_failures(issues: list[Issue], obj: dict[str, Any],
                             sid: str, failure_ids: set[str]) -> None:
+    """Validate step failures."""
     failures = _as_list(issues, obj.get("failure_states", []),
                         "path_step", sid, "failure_states")
     for failure in failures:
@@ -464,6 +491,7 @@ def _validate_step_failures(issues: list[Issue], obj: dict[str, Any],
 def _validate_step_row(issues: list[Issue], raw: Any, idx: int,
                        step_ids: set[str], evidence_ids: set[str],
                        failure_ids: set[str]) -> tuple[str, list[str]]:
+    """Validate step row."""
     obj = _as_mapping(issues, raw, "path_step", str(idx))
     sid = str(obj.get("id", idx))
     _unknown(issues, obj, STEP_KEYS, "path_step", sid)
@@ -482,6 +510,7 @@ def _validate_step_row(issues: list[Issue], raw: Any, idx: int,
 
 def _validate_prereq_refs(issues: list[Issue], refs: list[tuple[str, str]],
                           step_ids: set[str]) -> None:
+    """Validate prereq refs."""
     for sid, ref in refs:
         if ref not in step_ids:
             issues.append(Issue("path_step", sid, "prerequisites",
@@ -490,6 +519,7 @@ def _validate_prereq_refs(issues: list[Issue], refs: list[tuple[str, str]],
 
 
 def _validate_steps(data: dict[str, Any], issues: list[Issue]) -> tuple[set[str], set[str], set[str]]:
+    """Validate steps."""
     step_ids: set[str] = set()
     evidence_ids: set[str] = set()
     failure_ids: set[str] = set()
@@ -507,6 +537,7 @@ def _validate_steps(data: dict[str, Any], issues: list[Issue]) -> tuple[set[str]
 
 def _validate_awards(issues: list[Issue], raw_awards: Any, object_type: str,
                      object_id: str, consumer_ids: set[str]) -> None:
+    """Validate awards."""
     awards = _as_list(issues, raw_awards, object_type, object_id, "awards")
     if not awards:
         issues.append(Issue(object_type, object_id, "awards", "required",
@@ -528,6 +559,7 @@ def _validate_awards(issues: list[Issue], raw_awards: Any, object_type: str,
 
 def _validate_outcome_identity(issues: list[Issue], obj: dict[str, Any],
                                oid: str, outcome_ids: set[str]) -> None:
+    """Validate outcome identity."""
     _validate_ident(issues, obj.get("id"), "outcome", oid, "id")
     if isinstance(obj.get("id"), str):
         _record_unique(issues, outcome_ids, obj["id"], "outcome", "id")
@@ -544,6 +576,7 @@ def _validate_outcome_identity(issues: list[Issue], obj: dict[str, Any],
 def _validate_known_refs(issues: list[Issue], obj: dict[str, Any],
                          object_type: str, object_id: str, field: str,
                          known: set[str], detail: str) -> None:
+    """Validate known refs."""
     refs = _as_str_list(issues, obj.get(field, []), object_type, object_id, field)
     for ref in refs:
         if ref not in known:
@@ -554,6 +587,7 @@ def _validate_known_refs(issues: list[Issue], obj: dict[str, Any],
 def _validate_outcome_refs(issues: list[Issue], obj: dict[str, Any], oid: str,
                            step_ids: set[str], evidence_ids: set[str],
                            failure_ids: set[str]) -> None:
+    """Validate outcome refs."""
     _validate_known_refs(issues, obj, "outcome", oid, "canonical_steps",
                          step_ids, "canonical step reference is unknown")
     _validate_known_refs(issues, obj, "outcome", oid, "required_evidence",
@@ -568,6 +602,7 @@ def _validate_outcome_row(issues: list[Issue], raw: Any, idx: int,
                           outcome_ids: set[str], step_ids: set[str],
                           evidence_ids: set[str], failure_ids: set[str],
                           consumer_ids: set[str]) -> None:
+    """Validate outcome row."""
     obj = _as_mapping(issues, raw, "outcome", str(idx))
     oid = str(obj.get("id", idx))
     _unknown(issues, obj, OUTCOME_KEYS, "outcome", oid)
@@ -585,6 +620,7 @@ def _validate_outcomes(data: dict[str, Any], issues: list[Issue],
                        step_ids: set[str], evidence_ids: set[str],
                        failure_ids: set[str],
                        consumer_ids: set[str]) -> set[str]:
+    """Validate outcomes."""
     outcome_ids: set[str] = set()
     for idx, raw in enumerate(_as_list(issues, data.get("outcomes"),
                                       "oracle", "root", "outcomes")):
@@ -596,6 +632,7 @@ def _validate_outcomes(data: dict[str, Any], issues: list[Issue],
 
 def _validate_alternate_identity(issues: list[Issue], obj: dict[str, Any],
                                  aid: str, alternate_ids: set[str]) -> None:
+    """Validate alternate identity."""
     _validate_ident(issues, obj.get("id"), "alternate", aid, "id")
     if isinstance(obj.get("id"), str):
         _record_unique(issues, alternate_ids, obj["id"], "alternate", "id")
@@ -605,6 +642,7 @@ def _validate_alternate_identity(issues: list[Issue], obj: dict[str, Any],
 
 def _validate_alternate_award(issues: list[Issue], raw_award: Any, aid: str,
                               outcome_ids: set[str]) -> None:
+    """Validate alternate award."""
     award = _as_mapping(issues, raw_award, "alternate_award", aid)
     _unknown(issues, award, ALTERNATE_AWARD_KEYS, "alternate_award", aid)
     _require(issues, award, ["outcome", "points"], "alternate_award", aid)
@@ -619,6 +657,7 @@ def _validate_alternate_award(issues: list[Issue], raw_award: Any, aid: str,
 
 def _validate_alternate_evidence(issues: list[Issue], raw_evidence: Any,
                                  aid: str) -> None:
+    """Validate alternate evidence."""
     local_evidence_ids: set[str] = set()
     evidence = _as_list(issues, raw_evidence, "alternate", aid, "evidence")
     if not evidence:
@@ -630,6 +669,7 @@ def _validate_alternate_evidence(issues: list[Issue], raw_evidence: Any,
 
 def _validate_alternate_review(issues: list[Issue], raw_review: Any,
                                aid: str) -> None:
+    """Validate alternate review."""
     review = _as_mapping(issues, raw_review, "alternate_review", aid)
     _unknown(issues, review, REVIEW_KEYS, "alternate_review", aid)
     _require(issues, review, ["status", "rationale"], "alternate_review", aid)
@@ -644,6 +684,7 @@ def _validate_alternate_review(issues: list[Issue], raw_review: Any,
 def _validate_alternate_row(issues: list[Issue], raw: Any, idx: int,
                             alternate_ids: set[str],
                             outcome_ids: set[str]) -> None:
+    """Validate alternate row."""
     obj = _as_mapping(issues, raw, "alternate", str(idx))
     aid = str(obj.get("id", idx))
     _unknown(issues, obj, ALTERNATE_KEYS, "alternate", aid)
@@ -657,6 +698,7 @@ def _validate_alternate_row(issues: list[Issue], raw: Any, idx: int,
 
 def _validate_alternates(data: dict[str, Any], issues: list[Issue],
                          outcome_ids: set[str]) -> None:
+    """Validate alternates."""
     alternate_ids: set[str] = set()
     for idx, raw in enumerate(_as_list(issues, data.get("accepted_alternates", []),
                                       "oracle", "root", "accepted_alternates")):
@@ -664,6 +706,7 @@ def _validate_alternates(data: dict[str, Any], issues: list[Issue],
 
 
 def _validate_exports(data: dict[str, Any], issues: list[Issue]) -> None:
+    """Validate exports."""
     audiences: set[str] = set()
     export_ids: set[str] = set()
     for idx, raw in enumerate(_as_list(issues, data.get("exports"),
@@ -714,6 +757,7 @@ def validate(data: dict[str, Any], source: str = "<memory>") -> list[Issue]:
 
 
 def _failure_states(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Failure states."""
     rows: list[dict[str, Any]] = []
     for step in data.get("path_steps", []):
         if isinstance(step, dict):

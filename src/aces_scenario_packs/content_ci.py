@@ -77,18 +77,22 @@ REQUIRED_REVIEW_GATES = ("licensing", "attribution", "sensitive-data", "offensiv
 
 
 def compatibility_schema_path() -> str:
+    """Compatibility schema path."""
     return os.path.join(_SCHEMAS_DIR, "pack-compatibility.schema.yaml")
 
 
 def compatibility_example_path() -> str:
+    """Compatibility example path."""
     return os.path.join(_TEMPLATE_DIR, "pack.compatibility.example.yaml")
 
 
 def provenance_schema_path() -> str:
+    """Provenance schema path."""
     return os.path.join(_SCHEMAS_DIR, "provenance.schema.yaml")
 
 
 def provenance_example_path() -> str:
+    """Provenance example path."""
     return os.path.join(_TEMPLATE_DIR, "docs", "provenance-ledger.example.yaml")
 
 # Packs are scenarios/<name>/ with a pack.yaml. _template is a scaffold, not a
@@ -117,6 +121,7 @@ TEXT_EXT = {".md", ".txt", ".yaml", ".yml", ".csv", ".json", ".log", ".note"}
 
 
 def _git_lines(args: list[str]) -> list[str]:
+    """Git lines."""
     try:
         r = subprocess.run(
             ["git", "-C", _REPO, *args],
@@ -132,6 +137,7 @@ def _git_lines(args: list[str]) -> list[str]:
 
 
 def _is_git_visible_pack_dir(name: str) -> bool:
+    """Is git visible pack dir."""
     if _git_lines(["rev-parse", "--is-inside-work-tree"]) != ["true"]:
         return True
     if os.path.abspath(SCEN) != os.path.join(os.path.abspath(_REPO), "scenarios"):
@@ -146,6 +152,7 @@ def _is_git_visible_pack_dir(name: str) -> bool:
 
 
 def _packs() -> list[str]:
+    """Packs."""
     if not os.path.isdir(SCEN):
         return []
     out = []
@@ -166,6 +173,7 @@ VALIDATOR_DIRS = ("sdl", "profiles")
 
 
 def check_validators(failures: list[str]) -> None:
+    """Check validators."""
     for pack in _packs():
         for sub in VALIDATOR_DIRS:
             vdir = os.path.join(SCEN, pack, sub)
@@ -183,6 +191,7 @@ def check_validators(failures: list[str]) -> None:
 
 
 def check_tests(failures: list[str]) -> None:
+    """Check tests."""
     for pack in _packs():
         for sub in ("sdl/tests", "build/tests", "profiles/tests", "ctfd/tests"):
             d = os.path.join(SCEN, pack, sub)
@@ -251,6 +260,7 @@ def _participant_roots(pack: str) -> list[str]:
 
 
 def check_visibility(failures: list[str]) -> None:
+    """Check visibility."""
     for pack in _packs():
         for root in _participant_roots(pack):
             if not os.path.isdir(root):
@@ -304,10 +314,12 @@ def check_wizard_spider_pack_drift(failures: list[str]) -> None:
 
 
 def _shared_oracle_model_file() -> str:
+    """Shared oracle model file."""
     return os.path.join(_PKG, "oracle_model.py")
 
 
 def _shared_oracle_fixture_paths() -> list[str]:
+    """Shared oracle fixture paths."""
     fixtures = os.path.join(_ORACLE_DIR, "fixtures")
     if not os.path.isdir(fixtures):
         return []
@@ -349,6 +361,7 @@ def check_shared_oracle_model(failures: list[str]) -> None:
 
 
 def _load_yaml(path: str, failures: list[str], label: str) -> Any:
+    """Load yaml."""
     try:
         with open(path, "r", encoding="utf-8") as fh:
             return yaml.safe_load(fh)
@@ -358,6 +371,7 @@ def _load_yaml(path: str, failures: list[str], label: str) -> Any:
 
 
 def _resolve_ref(schema: dict[str, Any], ref: str) -> dict[str, Any] | None:
+    """Resolve ref."""
     prefix = "#/$defs/"
     if not ref.startswith(prefix):
         return None
@@ -370,6 +384,7 @@ def _resolve_ref(schema: dict[str, Any], ref: str) -> dict[str, Any] | None:
 
 
 def _schema_type_ok(value: Any, type_name: str) -> bool:
+    """Schema type ok."""
     if type_name == "object":
         return isinstance(value, dict)
     if type_name == "array":
@@ -386,6 +401,7 @@ def _schema_type_ok(value: Any, type_name: str) -> bool:
 
 
 def _schema_type_label(value: Any) -> str:
+    """Schema type label."""
     if value is None:
         return "null"
     if isinstance(value, bool):
@@ -402,6 +418,7 @@ def _schema_type_label(value: Any) -> str:
 
 
 def _schema_expected_types(schema: dict[str, Any]) -> list[str] | None:
+    """Schema expected types."""
     expected = schema.get("type")
     if expected is None:
         return None
@@ -412,6 +429,7 @@ def _schema_expected_types(schema: dict[str, Any]) -> list[str] | None:
 
 def _validate_schema_type(value: Any, schema: dict[str, Any], path: str,
                           errors: list[str]) -> bool:
+    """Validate schema type."""
     expected_types = _schema_expected_types(schema)
     if expected_types is None:
         return True
@@ -425,6 +443,7 @@ def _validate_schema_type(value: Any, schema: dict[str, Any], path: str,
 
 def _validate_schema_value_constraints(value: Any, schema: dict[str, Any],
                                        path: str, errors: list[str]) -> None:
+    """Validate schema value constraints."""
     if "const" in schema and value != schema["const"]:
         errors.append(f"{path}: expected constant {schema['const']!r}")
     if "enum" in schema and value not in schema["enum"]:
@@ -435,12 +454,14 @@ def _validate_schema_value_constraints(value: Any, schema: dict[str, Any],
 
 
 def _schema_properties(schema: dict[str, Any]) -> dict[str, Any]:
+    """Schema properties."""
     props = schema.get("properties", {})
     return props if isinstance(props, dict) else {}
 
 
 def _validate_required_fields(value: dict[str, Any], schema: dict[str, Any],
                               path: str, errors: list[str]) -> None:
+    """Validate required fields."""
     required = schema.get("required", [])
     if not isinstance(required, list):
         return
@@ -452,6 +473,7 @@ def _validate_required_fields(value: dict[str, Any], schema: dict[str, Any],
 def _validate_known_fields(value: dict[str, Any], schema: dict[str, Any],
                            props: dict[str, Any], path: str,
                            errors: list[str]) -> None:
+    """Validate known fields."""
     if schema.get("additionalProperties") is not False:
         return
     for key in value:
@@ -462,6 +484,7 @@ def _validate_known_fields(value: dict[str, Any], schema: dict[str, Any],
 def _validate_schema_object(value: dict[str, Any], schema: dict[str, Any],
                             root_schema: dict[str, Any], path: str,
                             errors: list[str]) -> None:
+    """Validate schema object."""
     props = _schema_properties(schema)
     _validate_required_fields(value, schema, path, errors)
     _validate_known_fields(value, schema, props, path, errors)
@@ -474,6 +497,7 @@ def _validate_schema_object(value: dict[str, Any], schema: dict[str, Any],
 def _validate_schema_array(value: list[Any], schema: dict[str, Any],
                            root_schema: dict[str, Any], path: str,
                            errors: list[str]) -> None:
+    """Validate schema array."""
     if "minItems" in schema and len(value) < int(schema["minItems"]):
         errors.append(f"{path}: expected at least {schema['minItems']} item(s)")
     item_schema = schema.get("items")
@@ -487,6 +511,7 @@ def _validate_schema_array(value: list[Any], schema: dict[str, Any],
 def _validate_json_schema_subset(value: Any, schema: dict[str, Any],
                                  root_schema: dict[str, Any], path: str,
                                  errors: list[str]) -> None:
+    """Validate json schema subset."""
     if "$ref" in schema:
         resolved = _resolve_ref(root_schema, str(schema["$ref"]))
         if resolved is None:
@@ -506,6 +531,7 @@ def _validate_json_schema_subset(value: Any, schema: dict[str, Any],
 
 
 def _path_inside_pack(pack_root: str, rel_path: str) -> bool:
+    """Path inside pack."""
     if not rel_path or os.path.isabs(rel_path):
         return False
     root = os.path.abspath(pack_root)
@@ -514,6 +540,7 @@ def _path_inside_pack(pack_root: str, rel_path: str) -> bool:
 
 
 def _iter_path_fields(value: Any, path: str = "$"):
+    """Iter path fields."""
     if isinstance(value, dict):
         for key, child in value.items():
             child_path = f"{path}.{key}"
@@ -526,6 +553,7 @@ def _iter_path_fields(value: Any, path: str = "$"):
 
 
 def _get_nested(value: dict[str, Any], dotted: str) -> Any:
+    """Get nested."""
     cur: Any = value
     for part in dotted.split("."):
         if not isinstance(cur, dict):
@@ -535,10 +563,12 @@ def _get_nested(value: dict[str, Any], dotted: str) -> Any:
 
 
 def _norm_manifest_path(rel_path: str) -> str:
+    """Norm manifest path."""
     return os.path.normpath(rel_path).rstrip(os.sep)
 
 
 def _path_is_parent(parent: str, child: str) -> bool:
+    """Path is parent."""
     parent_norm = _norm_manifest_path(parent)
     child_norm = _norm_manifest_path(child)
     if parent_norm in ("", ".") or parent_norm == child_norm:
@@ -552,6 +582,7 @@ PRIVATE_BOUNDARY_EXPORTS = {"oracle", "private"}
 
 
 def _iter_boundary_rows(boundaries: dict[str, Any], group: str):
+    """Iter boundary rows."""
     rows = boundaries.get(group, [])
     if not isinstance(rows, list):
         return
@@ -561,15 +592,18 @@ def _iter_boundary_rows(boundaries: dict[str, Any], group: str):
 
 
 def _boundary_path(row: dict[str, Any]) -> str | None:
+    """Boundary path."""
     path = row.get("path")
     return path if isinstance(path, str) else None
 
 
 def _is_private_boundary(group: str, row: dict[str, Any]) -> bool:
+    """Is private boundary."""
     return group == "oracle_only" or row.get("export") in PRIVATE_BOUNDARY_EXPORTS
 
 
 def _private_boundary_paths(boundaries: dict[str, Any]) -> list[str]:
+    """Private boundary paths."""
     private_paths: list[str] = []
     for group in BOUNDARY_GROUPS:
         for row in _iter_boundary_rows(boundaries, group):
@@ -580,6 +614,7 @@ def _private_boundary_paths(boundaries: dict[str, Any]) -> list[str]:
 
 
 def _iter_exposed_boundary_paths(boundaries: dict[str, Any]):
+    """Iter exposed boundary paths."""
     for group in EXPOSED_BOUNDARY_GROUPS:
         for row in _iter_boundary_rows(boundaries, group):
             path = _boundary_path(row)
@@ -589,6 +624,7 @@ def _iter_exposed_boundary_paths(boundaries: dict[str, Any]):
 
 def _record_boundary_overlap(failures: list[str], pack: str, group: str,
                              exposed_path: str, private_path: str) -> None:
+    """Record boundary overlap."""
     failures.append(
         f"compatibility manifest INVALID: {pack}: {group} path "
         f"{exposed_path} contains oracle/private path {private_path}")
@@ -596,6 +632,7 @@ def _record_boundary_overlap(failures: list[str], pack: str, group: str,
 
 def _check_boundary_overlaps(manifest: dict[str, Any], failures: list[str],
                              pack: str) -> None:
+    """Check boundary overlaps."""
     boundaries = manifest.get("artifact_boundaries")
     if not isinstance(boundaries, dict):
         return
@@ -608,6 +645,7 @@ def _check_boundary_overlaps(manifest: dict[str, Any], failures: list[str],
 
 
 def _check_duplicate_ids(manifest: dict[str, Any], failures: list[str], pack: str) -> None:
+    """Check duplicate ids."""
     checks = [
         ("runtime_profiles", "profile_id"),
         ("delivery_bundles", "bundle_id"),
@@ -634,6 +672,7 @@ def _check_duplicate_ids(manifest: dict[str, Any], failures: list[str], pack: st
 
 def _validate_compatibility_manifest(pack: str, pack_yaml: dict[str, Any],
                                      failures: list[str]) -> None:
+    """Validate compatibility manifest."""
     pack_root = os.path.join(SCEN, pack)
     manifest_rel = pack_yaml.get("compatibility_manifest")
     if manifest_rel is None:
@@ -683,6 +722,7 @@ def _validate_compatibility_manifest(pack: str, pack_yaml: dict[str, Any],
 
 
 def check_compatibility_schema_example(failures: list[str]) -> None:
+    """Check compatibility schema example."""
     schema = _load_yaml(compatibility_schema_path(), failures, "compatibility schema")
     example = _load_yaml(compatibility_example_path(), failures, "compatibility example")
     if not isinstance(schema, dict) or not isinstance(example, dict):
@@ -698,6 +738,7 @@ def check_compatibility_schema_example(failures: list[str]) -> None:
 
 
 def check_manifest(failures: list[str]) -> None:
+    """Check manifest."""
     check_compatibility_schema_example(failures)
     for pack in _packs():
         pack_yaml_path = os.path.join(SCEN, pack, PACK_MANIFEST_FILE)
@@ -714,6 +755,7 @@ def check_manifest(failures: list[str]) -> None:
 
 def _check_provenance_duplicate_ids(ledger: dict[str, Any], failures: list[str],
                                     pack: str) -> None:
+    """Check provenance duplicate ids."""
     for key, id_key in (("sources", "source_id"), ("artifacts", "artifact_id"),
                         ("overlays", "overlay_id")):
         rows = ledger.get(key)
@@ -731,6 +773,7 @@ def _check_provenance_duplicate_ids(ledger: dict[str, Any], failures: list[str],
 
 
 def _provenance_source_ids(ledger: dict[str, Any]) -> set[str]:
+    """Provenance source ids."""
     ids: set[str] = set()
     sources = ledger.get("sources")
     if isinstance(sources, list):
@@ -742,6 +785,7 @@ def _provenance_source_ids(ledger: dict[str, Any]) -> set[str]:
 
 def _provenance_overlay_roots(ledger: dict[str, Any], pack_root: str,
                               failures: list[str], pack: str) -> list[str]:
+    """Provenance overlay roots."""
     roots: list[str] = []
     overlays = ledger.get("overlays")
     if not isinstance(overlays, list):
@@ -762,12 +806,14 @@ def _provenance_overlay_roots(ledger: dict[str, Any], pack_root: str,
 
 
 def _path_under_root(root: str, candidate: str) -> bool:
+    """Path under root."""
     return (_norm_manifest_path(root) == _norm_manifest_path(candidate)
             or _path_is_parent(root, candidate))
 
 
 def _check_provenance_content_safety(ledger: dict[str, Any], failures: list[str],
                                      pack: str) -> None:
+    """Check provenance content safety."""
     safety = ledger.get("content_safety")
     if not isinstance(safety, dict):
         return
@@ -780,6 +826,7 @@ def _check_provenance_content_safety(ledger: dict[str, Any], failures: list[str]
 
 def _check_provenance_review_gates(ledger: dict[str, Any], failures: list[str],
                                    pack: str) -> None:
+    """Check provenance review gates."""
     review = ledger.get("review")
     if not isinstance(review, dict):
         return
@@ -798,6 +845,7 @@ def _check_provenance_review_gates(ledger: dict[str, Any], failures: list[str],
 
 def _check_provenance_sources(ledger: dict[str, Any], failures: list[str],
                               pack: str) -> None:
+    """Check provenance sources."""
     sources = ledger.get("sources")
     if not isinstance(sources, list):
         return
@@ -812,6 +860,7 @@ def _check_provenance_sources(ledger: dict[str, Any], failures: list[str],
 
 def _check_artifact_path(pack_root: str, aid: Any, apath: str,
                          failures: list[str], pack: str) -> None:
+    """Check artifact path."""
     if not _path_inside_pack(pack_root, apath):
         failures.append(
             f"provenance ledger INVALID: {pack}: artifact {aid} path escapes "
@@ -824,6 +873,7 @@ def _check_artifact_path(pack_root: str, aid: Any, apath: str,
 
 def _check_artifact_source_refs(aid: Any, refs: Any, source_ids: set[str],
                                 failures: list[str], pack: str) -> None:
+    """Check artifact source refs."""
     if not isinstance(refs, list):
         return
     for sid in refs:
@@ -834,6 +884,7 @@ def _check_artifact_source_refs(aid: Any, refs: Any, source_ids: set[str],
 
 
 def _artifact_under_overlay(apath: Any, overlay_roots: list[str]) -> bool:
+    """Artifact under overlay."""
     return isinstance(apath, str) and any(
         _path_under_root(root, apath) for root in overlay_roots)
 
@@ -842,6 +893,7 @@ def _check_overlay_base_overlap(overlay_roots: list[str], base_paths: list[str],
                                 failures: list[str], pack: str) -> None:
     # A customer overlay must be removable without touching base content: its root
     # may not contain — or live inside — any base (non-customer) artifact root.
+    """Check overlay base overlap."""
     for root in overlay_roots:
         for base in base_paths:
             if _path_under_root(root, base) or _path_under_root(base, root):
@@ -853,6 +905,7 @@ def _check_overlay_base_overlap(overlay_roots: list[str], base_paths: list[str],
 def _check_provenance_artifacts(ledger: dict[str, Any], pack_root: str,
                                 source_ids: set[str], overlay_roots: list[str],
                                 failures: list[str], pack: str) -> None:
+    """Check provenance artifacts."""
     artifacts = ledger.get("artifacts")
     if not isinstance(artifacts, list):
         return
@@ -877,6 +930,7 @@ def _check_provenance_artifacts(ledger: dict[str, Any], pack_root: str,
 
 def _validate_provenance_ledger(pack: str, pack_yaml: dict[str, Any],
                                 failures: list[str]) -> None:
+    """Validate provenance ledger."""
     pack_root = os.path.join(SCEN, pack)
     ledger_rel = pack_yaml.get("provenance_ledger")
     if ledger_rel is None:
@@ -924,6 +978,7 @@ def _validate_provenance_ledger(pack: str, pack_yaml: dict[str, Any],
 
 
 def check_provenance_schema_example(failures: list[str]) -> None:
+    """Check provenance schema example."""
     schema = _load_yaml(provenance_schema_path(), failures, "provenance schema")
     example = _load_yaml(provenance_example_path(), failures, "provenance example")
     if not isinstance(schema, dict) or not isinstance(example, dict):
@@ -939,6 +994,7 @@ def check_provenance_schema_example(failures: list[str]) -> None:
 
 
 def check_provenance(failures: list[str]) -> None:
+    """Check provenance."""
     check_provenance_schema_example(failures)
     for pack in _packs():
         pack_yaml_path = os.path.join(SCEN, pack, PACK_MANIFEST_FILE)
@@ -952,6 +1008,7 @@ def check_provenance(failures: list[str]) -> None:
 
 
 def check_golden_checklist(failures: list[str]) -> None:
+    """Check golden checklist."""
     for pack in _packs():
         checklist = os.path.join(SCEN, pack, "docs", "golden-readiness-checklist.md")
         if not os.path.isfile(checklist):
@@ -976,6 +1033,7 @@ def check_golden_checklist(failures: list[str]) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point."""
     global _REPO, SCEN
     import argparse
     parser = argparse.ArgumentParser(

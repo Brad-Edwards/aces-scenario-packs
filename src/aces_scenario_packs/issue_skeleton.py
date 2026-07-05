@@ -32,6 +32,7 @@ LABEL_TIER_ACES = "tier:aces"
 
 @dataclass(frozen=True)
 class PackPlan:
+    """PackPlan."""
     pack_id: str
     title: str
     focus: str
@@ -43,6 +44,7 @@ class PackPlan:
 
 @dataclass(frozen=True)
 class IssueTemplate:
+    """IssueTemplate."""
     key: str
     suffix: str
     labels: tuple[str, ...]
@@ -51,6 +53,7 @@ class IssueTemplate:
 
 @dataclass(frozen=True)
 class Operation:
+    """Operation."""
     action: str
     title: str
     body: str | None = None
@@ -70,6 +73,7 @@ COMMON_ANCHORS = """\
 
 
 def clean(body: str) -> str:
+    """Clean."""
     body = textwrap.dedent(body).strip()
     lines = [line[4:] if line.startswith("    ") else line
              for line in body.splitlines()]
@@ -77,10 +81,12 @@ def clean(body: str) -> str:
 
 
 def title_from_pack_id(pack_id: str) -> str:
+    """Title from pack id."""
     return " ".join(part.capitalize() for part in pack_id.split("-"))
 
 
 def validate_pack_id(pack_id: str) -> None:
+    """Validate pack id."""
     if not PACK_ID_RE.fullmatch(pack_id):
         raise SystemExit(
             "pack id must be lowercase kebab-case, start/end with a letter or "
@@ -88,12 +94,14 @@ def validate_pack_id(pack_id: str) -> None:
 
 
 def bullets(lines: tuple[str, ...]) -> str:
+    """Bullets."""
     if not lines:
         return "- Source log TBD by the pack-design agent."
     return "\n".join(f"- {line}" for line in lines)
 
 
 def pack_block(plan: PackPlan) -> str:
+    """Pack block."""
     return clean(f"""\
     ## Pack
     - Pack id: `{plan.pack_id}`
@@ -107,6 +115,7 @@ def pack_block(plan: PackPlan) -> str:
 
 
 def child_issue_note() -> str:
+    """Child issue note."""
     return clean("""\
     ## Child Issue Guidance
     This is a skeleton planning issue. The pack-design agent should edit this
@@ -117,6 +126,7 @@ def child_issue_note() -> str:
 
 
 def contract_body(plan: PackPlan) -> str:
+    """Contract body."""
     return clean(f"""\
     ## Goal
     Create the `{plan.pack_id}` scenario contract and pack skeleton under the current pack doctrine.
@@ -140,6 +150,7 @@ def contract_body(plan: PackPlan) -> str:
 
 
 def topology_body(plan: PackPlan) -> str:
+    """Topology body."""
     return clean(f"""\
     ## Goal
     Define the real topology, assets, participant surface, and reference-triangle design for `{plan.pack_id}`.
@@ -163,6 +174,7 @@ def topology_body(plan: PackPlan) -> str:
 
 
 def oracle_body(plan: PackPlan) -> str:
+    """Oracle body."""
     return clean(f"""\
     ## Goal
     Define the hidden path, affordance ledger, objective oracle, and validation model for `{plan.pack_id}`.
@@ -186,6 +198,7 @@ def oracle_body(plan: PackPlan) -> str:
 
 
 def flag_body(plan: PackPlan) -> str:
+    """Flag body."""
     return clean(f"""\
     ## Goal
     Add the all-or-nothing flag, challenge, and reference CTFd layer for `{plan.pack_id}` when the scenario has scoring.
@@ -208,6 +221,7 @@ def flag_body(plan: PackPlan) -> str:
 
 
 def profile_body(plan: PackPlan) -> str:
+    """Profile body."""
     return clean(f"""\
     ## Goal
     Add delivery/audience profile bundles for `{plan.pack_id}` when the pack has multiple audiences.
@@ -230,6 +244,7 @@ def profile_body(plan: PackPlan) -> str:
 
 
 def build_body(plan: PackPlan) -> str:
+    """Build body."""
     return clean(f"""\
     ## Goal
     Implement the `{plan.pack_id}` golden build in the declared live infrastructure.
@@ -253,6 +268,7 @@ def build_body(plan: PackPlan) -> str:
 
 
 def rehearsal_body(plan: PackPlan) -> str:
+    """Rehearsal body."""
     return clean(f"""\
     ## Goal
     Add automated live rehearsal for the `{plan.pack_id}` golden build.
@@ -275,6 +291,7 @@ def rehearsal_body(plan: PackPlan) -> str:
 
 
 def manual_body(plan: PackPlan) -> str:
+    """Manual body."""
     return clean(f"""\
     ## Goal
     Run the final manual participant walkthrough for `{plan.pack_id}` as its own golden-readiness slice.
@@ -298,6 +315,7 @@ def manual_body(plan: PackPlan) -> str:
 
 
 def final_body(plan: PackPlan) -> str:
+    """Final body."""
     return clean(f"""\
     ## Goal
     Reconcile final docs, status, evidence, release metadata, and teardown state for `{plan.pack_id}`.
@@ -433,15 +451,18 @@ ISSUE_TEMPLATES = (
 
 
 def issue_title(plan: PackPlan, template: IssueTemplate) -> str:
+    """Issue title."""
     return f"{plan.pack_id}: {template.suffix}"
 
 
 def milestone_title(plan: PackPlan) -> str:
+    """Milestone title."""
     return plan.milestone_title or f"Scenario pack: {plan.title}"
 
 
 def wanted_labels(plan: PackPlan, template: IssueTemplate,
                   available_labels: set[str] | None = None) -> tuple[str, ...]:
+    """Wanted labels."""
     labels = set(template.labels).union(plan.labels)
     if available_labels is not None:
         labels = {label for label in labels if label in available_labels}
@@ -450,6 +471,7 @@ def wanted_labels(plan: PackPlan, template: IssueTemplate,
 
 def matching_issue(existing_issues: list[dict[str, Any]], title: str,
                    milestone_number: int | None) -> dict[str, Any] | None:
+    """Matching issue."""
     for issue in existing_issues:
         issue_milestone = (issue.get("milestone") or {}).get("number")
         if issue["title"] == title and (
@@ -462,6 +484,7 @@ def build_operations(plan: PackPlan, existing_issues: list[dict[str, Any]],
                      *, available_labels: set[str] | None = None,
                      refresh_existing: bool = False,
                      milestone_exists: bool = True) -> list[Operation]:
+    """Build operations."""
     operations: list[Operation] = []
     if not milestone_exists:
         operations.append(Operation(
@@ -503,10 +526,13 @@ def build_operations(plan: PackPlan, existing_issues: list[dict[str, Any]],
 
 
 class GhClient:
+    """GhClient."""
     def __init__(self, repo: str) -> None:
+        """Initialize the instance."""
         self.repo = repo
 
     def run(self, args: list[str], payload: dict[str, Any] | None = None) -> Any:
+        """Run."""
         cmd = ["gh", *args]
         input_text = json.dumps(payload) if payload is not None else None
         if payload is not None:
@@ -520,6 +546,7 @@ class GhClient:
         return None
 
     def list_labels(self) -> set[str]:
+        """List labels."""
         proc = subprocess.run(
             ["gh", "label", "list", "--repo", self.repo, "--limit", "500",
              "--json", "name"],
@@ -532,6 +559,7 @@ class GhClient:
         return {row["name"] for row in json.loads(proc.stdout)}
 
     def list_issues(self) -> list[dict[str, Any]]:
+        """List issues."""
         proc = subprocess.run(
             ["gh", "issue", "list", "--repo", self.repo, "--state", "all",
              "--limit", "2000", "--json", "number,title,milestone,labels"],
@@ -544,14 +572,17 @@ class GhClient:
         return json.loads(proc.stdout)
 
     def list_milestones(self) -> list[dict[str, Any]]:
+        """List milestones."""
         return self.run(["api", f"repos/{self.repo}/milestones", "--paginate"]) or []
 
     def create_milestone(self, title: str) -> int:
+        """Create milestone."""
         row = self.run(["api", "--method", "POST",
                         f"repos/{self.repo}/milestones"], {"title": title})
         return int(row["number"])
 
     def create_issue(self, operation: Operation, milestone_number: int) -> None:
+        """Create issue."""
         self.run(["api", "--method", "POST", f"repos/{self.repo}/issues"], {
             "title": operation.title,
             "body": operation.body,
@@ -560,6 +591,7 @@ class GhClient:
         })
 
     def update_issue(self, operation: Operation, milestone_number: int) -> None:
+        """Update issue."""
         if operation.issue_number is None:
             raise SystemExit("update operation missing issue number")
         self.run(["api", "--method", "PATCH",
@@ -572,6 +604,7 @@ class GhClient:
 
 
 def resolve_milestone_number(plan: PackPlan, milestones: list[dict[str, Any]]) -> tuple[int | None, bool]:
+    """Resolve milestone number."""
     if plan.milestone_number is not None:
         return plan.milestone_number, True
     title = milestone_title(plan)
@@ -582,6 +615,7 @@ def resolve_milestone_number(plan: PackPlan, milestones: list[dict[str, Any]]) -
 
 
 def print_operations(operations: list[Operation]) -> None:
+    """Print operations."""
     for op in operations:
         if op.action == "create_milestone":
             print(f"CREATE milestone: {op.title}")
@@ -595,6 +629,7 @@ def print_operations(operations: list[Operation]) -> None:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """Parse args."""
     parser = argparse.ArgumentParser(
         description="Create standard skeleton GitHub issues for a scenario pack.")
     parser.add_argument("--repo", default=DEFAULT_REPO,
@@ -621,6 +656,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def plan_from_args(args: argparse.Namespace) -> PackPlan:
+    """Plan from args."""
     if not args.pack_id:
         raise SystemExit("--pack-id is required")
     validate_pack_id(args.pack_id)
@@ -639,6 +675,7 @@ def plan_from_args(args: argparse.Namespace) -> PackPlan:
 
 def prepare_operations(args: argparse.Namespace,
                        client: GhClient) -> tuple[list[Operation], int | None]:
+    """Prepare operations."""
     plan = plan_from_args(args)
     milestone_number, milestone_exists = resolve_milestone_number(
         plan, client.list_milestones())
@@ -666,6 +703,7 @@ def prepare_operations(args: argparse.Namespace,
 
 def require_milestone_number(milestone_number: int | None,
                              action: str) -> int:
+    """Require milestone number."""
     if milestone_number is None:
         raise SystemExit(f"cannot {action} issue without a milestone number")
     return milestone_number
@@ -673,6 +711,7 @@ def require_milestone_number(milestone_number: int | None,
 
 def apply_operation(client: GhClient, operation: Operation,
                     active_milestone: int | None) -> int | None:
+    """Apply operation."""
     if operation.action == "create_milestone":
         milestone_number = client.create_milestone(operation.title)
         print(f"created milestone {milestone_number}: {operation.title}")
@@ -694,12 +733,14 @@ def apply_operation(client: GhClient, operation: Operation,
 
 def apply_operations(client: GhClient, operations: list[Operation],
                      milestone_number: int | None) -> None:
+    """Apply operations."""
     active_milestone = milestone_number
     for operation in operations:
         active_milestone = apply_operation(client, operation, active_milestone)
 
 
 def main(argv: list[str] | None = None) -> None:
+    """Command-line entry point."""
     args = parse_args(argv or sys.argv[1:])
     client = GhClient(args.repo)
     operations, milestone_number = prepare_operations(args, client)

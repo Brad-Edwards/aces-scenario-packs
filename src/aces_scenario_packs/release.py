@@ -130,6 +130,7 @@ class PackContracts:
     """The committed contracts the release tool reads, loaded once per pack."""
 
     def __init__(self, pack_root: str) -> None:
+        """Initialize the instance."""
         self.pack_root = os.path.abspath(pack_root)
         self._root_real = os.path.realpath(self.pack_root)
         self.pack_yaml = self._read("pack.yaml") or {}
@@ -153,16 +154,19 @@ class PackContracts:
             return None
 
     def _read_pointer(self, rel: Any) -> Any:
+        """Read pointer."""
         return self._read(rel) if isinstance(rel, str) else None
 
     @property
     def supported_bundles(self) -> list[dict[str, Any]]:
+        """Supported bundles."""
         compat = self.compatibility or {}
         return [b for b in (compat.get("delivery_bundles") or [])
                 if isinstance(b, dict) and b.get("status") == "supported"]
 
     @property
     def manifest_bundle_rows(self) -> dict[str, dict[str, Any]]:
+        """Manifest bundle rows."""
         rows = (self.bundles or {}).get("bundles") or []
         return {r.get("id"): r for r in rows if isinstance(r, dict) and r.get("id")}
 
@@ -206,6 +210,7 @@ def scan_tier_for_leaks(tier_dir: str) -> list[tuple[str, str]]:
 # --------------------------------------------------------------------------
 def _entry_failures(pack_root: str, name: str, bid: str, key: str,
                     entries: Any) -> list[str]:
+    """Entry failures."""
     out: list[str] = []
     for entry in entries or []:
         if not isinstance(entry, str):
@@ -274,11 +279,13 @@ _SAFE_SLUG_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 
 def _is_safe_slug(value: str) -> bool:
+    """Is safe slug."""
     return bool(value) and value not in (".", "..") and \
         _SAFE_SLUG_RE.fullmatch(value) is not None
 
 
 def _safe_pack_path(pack_root: str, rel: str) -> tuple[bool, str]:
+    """Safe pack path."""
     if not rel or os.path.isabs(rel):
         return False, "is absolute or empty"
     if not cc._path_inside_pack(pack_root, rel):
@@ -316,6 +323,7 @@ def _stage(src: str, dst: str, pack_root: str) -> tuple[int, list[str]]:
 
 def _stage_tree(src: str, dst: str, pack_root: str,
                 root_real: str) -> tuple[int, list[str]]:
+    """Stage tree."""
     count = 0
     errors: list[str] = []
     for dirpath, _dirs, files in os.walk(src):
@@ -356,6 +364,7 @@ def _resolve_release_paths(pc: "PackContracts", out_dir: str,
 def _stage_boundary_row(pc: "PackContracts", pack_root: str, group: str, tier: str,
                         row: Any, staging: str,
                         tier_stats: dict[str, dict[str, Any]]) -> list[str]:
+    """Stage boundary row."""
     if not isinstance(row, dict):
         return []
     rel = row.get("path")
@@ -379,6 +388,7 @@ def _stage_boundary_row(pc: "PackContracts", pack_root: str, group: str, tier: s
 
 def _stage_boundaries(pc: "PackContracts", pack_root: str, boundaries: Any,
                       staging: str, tier_stats: dict[str, dict[str, Any]]) -> list[str]:
+    """Stage boundaries."""
     if not isinstance(boundaries, dict):
         return []
     failures: list[str] = []
@@ -447,6 +457,7 @@ def build_release(pack_root: str, out_dir: str, *,
 # Release metadata (AC4)
 # --------------------------------------------------------------------------
 def _tally(rows: Any, key: str) -> dict[str, int]:
+    """Tally."""
     out: dict[str, int] = {}
     for row in rows or []:
         if isinstance(row, dict) and isinstance(row.get(key), str):
@@ -455,6 +466,7 @@ def _tally(rows: Any, key: str) -> dict[str, int]:
 
 
 def _gate_status(review: dict[str, Any]) -> dict[str, Any]:
+    """Gate status."""
     out: dict[str, Any] = {}
     for gate in (review.get("gates") or []):
         if isinstance(gate, dict) and isinstance(gate.get("gate_id"), str):
@@ -484,6 +496,7 @@ def _provenance_summary(ledger: Any) -> dict[str, Any]:
 
 
 def _git_commit(repo_root: str) -> str | None:
+    """Git commit."""
     import subprocess
     try:
         out = subprocess.run(["git", "-C", repo_root, "rev-parse", "HEAD"],
@@ -495,6 +508,7 @@ def _git_commit(repo_root: str) -> str | None:
 
 def release_metadata(pack_root: str, *, include_build_provenance: bool = False,
                      repo_root: str = REPO) -> dict[str, Any]:
+    """Release metadata."""
     pc = PackContracts(pack_root)
     compat = pc.compatibility or {}
     version, digest = load_contract_version()
@@ -529,6 +543,7 @@ def release_metadata(pack_root: str, *, include_build_provenance: bool = False,
 # Smoke (AC3: delivery-bundle selection changes participant exposure)
 # --------------------------------------------------------------------------
 def _under_participant(rel: str) -> bool:
+    """Under participant."""
     parts = rel.replace("\\", "/").split("/")
     if parts and parts[0] == "_shared":
         return True
@@ -581,6 +596,7 @@ def _smoke_bundle(pc: "PackContracts", pack_root: str, bundle: dict[str, Any],
 
 def _smoke_view_leaks(pc: "PackContracts", pack_root: str,
                       views: dict[str, list[str]]) -> list[str]:
+    """Smoke view leaks."""
     failures: list[str] = []
     for bid, files in views.items():
         for rel in files:
@@ -647,6 +663,7 @@ def check(packs: list[str] | None = None) -> list[str]:
 # CLI
 # --------------------------------------------------------------------------
 def _resolve_pack(arg: str) -> str:
+    """Resolve pack."""
     if os.path.isdir(arg):
         return os.path.abspath(arg)
     candidate = os.path.join(SCEN, arg)
@@ -656,6 +673,7 @@ def _resolve_pack(arg: str) -> str:
 
 
 def _report(label: str, failures: list[str]) -> int:
+    """Report."""
     if failures:
         print(f"{label}: FAIL ({len(failures)} issue(s))")
         for f in failures:
@@ -666,6 +684,7 @@ def _report(label: str, failures: list[str]) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point."""
     parser = argparse.ArgumentParser(
         description="ACES pack build / lint / release / profile-smoke gate")
     sub = parser.add_subparsers(dest="cmd", required=True)

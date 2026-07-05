@@ -44,8 +44,22 @@ jobs:
       - name: Decide release from the changelog
         id: decide
         run: |
-          set -euo pipefail
-          version="$(python tools/release_bump.py current)"
+          set -uo pipefail
+          # Guard: never publish a stale changelog. If typed fragments are still
+          # pending, Prepare Release has not been run for this promotion — the
+          # CHANGELOG top is behind the real work, so releasing it would ship an
+          # incomplete changelog. Skip until the changelog is collated.
+          if pending="$(python tools/release_bump.py next 2>/dev/null)"; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::uncollated changelog fragments are pending (next=${pending}); run Prepare Release before promoting. Skipping."
+            exit 0
+          fi
+          version="$(python tools/release_bump.py current 2>/dev/null || true)"
+          if [ -z "${version}" ]; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::no version section in CHANGELOG.md; nothing to release."
+            exit 0
+          fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           if git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; then
             echo "release=false" >> "$GITHUB_OUTPUT"
@@ -71,6 +85,19 @@ jobs:
         run: |
           python -m pip install --upgrade build
           python -m build --outdir dist
+
+      - name: Assert the built version matches the changelog
+        if: steps.decide.outputs.release == 'true'
+        env:
+          EXPECTED: ${{ steps.decide.outputs.version }}
+        run: |
+          set -euo pipefail
+          built="$(ls dist/*.whl | sed -E 's|.*/aces_scenario_packs-([0-9]+\.[0-9]+\.[0-9]+)-.*|\1|' | head -1)"
+          if [ "${built}" != "${EXPECTED}" ]; then
+            echo "::error::built version ${built} != changelog/tag version ${EXPECTED}"
+            exit 1
+          fi
+          echo "built version ${built} matches the changelog/tag."
 
       - name: Generate CycloneDX SBOM
         if: steps.decide.outputs.release == 'true'

@@ -53,11 +53,18 @@ release reads it back from there and tags it. One number, one source.
 - **Prepare release** (`workflow_dispatch`): computes the next version from the
   fragments, runs `towncrier build --version <that>`, and opens a `release/vX.Y.Z`
   PR into `dev`. This is the deliberate "cut a release" action.
-- **Release** (`on: push: main`): reads `CHANGELOG.md`'s newest version; if it has
-  no tag yet, it **creates the tag** (`refs/tags/*` is not branch-protected — no
-  commit is ever pushed to `main`), builds the sdist + wheel (hatch-vcs derives
-  the version from the tag), attaches a CycloneDX SBOM, publishes to PyPI via
-  OIDC, and cuts a GitHub Release whose notes are the changelog section.
+- **Release** (`on: push: main`): first, a **guard** — if typed fragments are
+  still pending (Prepare Release hasn't collated them), it **skips**, so a stale
+  changelog can never be published regardless of promotion order. Otherwise it
+  reads `CHANGELOG.md`'s newest version; if it has no tag yet, it **creates the
+  tag** (`refs/tags/*` is not branch-protected — no commit is ever pushed to
+  `main`), builds the sdist + wheel (hatch-vcs derives the version from the tag),
+  **asserts the built version equals the changelog version** (final anti-drift
+  check), attaches a CycloneDX SBOM, publishes to PyPI via OIDC, and cuts a GitHub
+  Release whose notes are the changelog section.
+
+The first release is not special: there is no seed and no manual tag — you run
+Prepare Release for `0.1.0` exactly as for every later version.
 
 So: fragments → (prepare) `CHANGELOG.md [X.Y.Z]` → (release) tag `vX.Y.Z` → build
 version `X.Y.Z`. Every step reads the same number; drift is impossible by

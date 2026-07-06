@@ -61,29 +61,25 @@ aces-pack-validate --repo .
 aces-pack-release check --all
 ```
 
-Releases are **changelog-driven**
-(see [ADR 0007](docs/decisions/adrs/0007-changelog-driven-versioning.md)). You
-never hand-edit a version — the version is computed from the changelog fragments,
-so the tag and `CHANGELOG.md` can't drift. Each user-visible PR adds a fragment
-under [`changelog.d/`](changelog.d/) (`<issue>.<type>.md`); the **fragment type**
-decides the bump:
+Releases are managed by **release-please** — merge-driven, nothing hand-run
+(see [ADR 0008](docs/decisions/adrs/0008-adopt-release-please.md)). The version
+lives in `pyproject.toml` (`[project].version`) and is bumped by release-please;
+`__version__` derives from it. The **Conventional Commit PR title** decides the
+bump:
 
-| Fragment type | Bump |
+| PR title | Bump |
 | --- | --- |
-| `breaking`, `removed` | major (pre-1.0: minor) |
-| `added`, `changed`, `deprecated` | minor |
-| `security`, `fixed` | patch |
+| `feat!:` / `BREAKING CHANGE:` | major (pre-1.0: minor) |
+| `feat:` | minor |
+| `fix:` / `perf:` | patch |
+| `docs:` `chore:` `refactor:` `test:` `ci:` `build:` | no release |
 
-The version is a single committed literal (`__version__` in
-`src/aces_scenario_packs/__init__.py`), read by hatchling and bumped by
-`tools/release.py`. To cut a release: run `python tools/release.py` (it computes
-the version from the fragments, writes `__version__`, and collates `CHANGELOG.md`),
-commit on a `release/vX.Y.Z` branch, and open a PR to `main`. On merge, the
-Release workflow tags `v<version>`, builds the sdist + wheel, generates a
-CycloneDX SBOM, publishes to PyPI via OIDC, and cuts a GitHub Release (only a tag
-is pushed — never a commit to `main`). The first release is not special — you run
-`tools/release.py` for `0.1.0` exactly as for every later version. PR titles must
-be conventional (a CI check enforces it and bans agent-branding prefixes) — that
-keeps history tidy but does not drive the version.
+You never edit `CHANGELOG.md` — release-please owns it. As feature PRs land on
+`main` (via `dev`), release-please keeps a `chore(main): release X.Y.Z` PR up to
+date with the version bump + changelog. **Merge that PR to release:** it tags
+`vX.Y.Z`, builds the sdist + wheel, generates a CycloneDX SBOM, publishes to PyPI
+via OIDC, and cuts the GitHub Release. (The release PR is opened by the CI token,
+so its checks don't auto-run — admin-merge it.) A CI check enforces conventional
+PR titles and bans agent-branding prefixes.
 
 Licensed under the MIT License (see [`LICENSE`](LICENSE)).

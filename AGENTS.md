@@ -29,8 +29,11 @@ python3 -m compileall src tests
 
 - PR titles MUST be Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`,
   `refactor:`, `test:`, `ci:`, `build:`); a required CI check enforces it.
-- The type is the release decision: `feat:`→minor, `fix:`→patch,
-  `feat!:`/`BREAKING CHANGE:`→major; docs/chore/test/ci/refactor/build don't
-  release. Never hand-edit a version — the git tag is the source of truth.
-- Squash-merge feature PRs into `dev`; promote `dev`→`main` with a merge/rebase.
-  See `docs/decisions/adrs/0006-conventional-commit-releases.md`.
+- The type is the release decision: `feat:`→minor, `fix:`/`perf:`→patch,
+  `feat!:`/`BREAKING CHANGE:`→major (pre-1.0 → minor); docs/chore/test/ci/
+  refactor/build don't release.
+- **Never hand-edit the version or `CHANGELOG.md`** — the version lives in
+  `pyproject.toml` (`[project].version`) and both are owned by **release-please**,
+  which maintains a `chore(main): release X.Y.Z` PR; merging it publishes.
+- Squash-merge feature PRs. See
+  `docs/decisions/adrs/0008-adopt-release-please.md`.

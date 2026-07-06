@@ -1,10 +1,11 @@
 name: PR Title
 
 # Repository-side PR title guard (ADR 0006). Enforces the Conventional Commit
-# Conventional Commit shape, and bans agent/tool advertising prefixes
-# (e.g. `[claude] ...`). Enforced by repo automation, not only agent
-# instructions. No `dev` exemption. Make "PR title guard" a required check on
-# dev and main so the release contract can't be bypassed or forgotten.
+# shape and bans agent/tool advertising prefixes (e.g. `[claude] ...`) on
+# feature PRs. Scoped to PRs whose BASE is `dev`: those titles are squash-merged
+# into the commit that later drives release-please, so the convention matters.
+# `dev`->`main` promotion PRs are exempt — their title is a merge subject, not a
+# release-driving commit, so enforcing it there is pure noise (it always fails).
 #
 # The PR title is untrusted event data: the checker reads it from
 # $GITHUB_EVENT_PATH (never shell-interpolated), the token is read-only, and this
@@ -14,6 +15,7 @@ name: PR Title
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
+    branches: [dev]
 
 permissions:
   contents: read
@@ -25,6 +27,10 @@ concurrency:
 jobs:
   pr-title-guard:
     name: PR title guard
+    # Belt-and-suspenders alongside the base-branch `on:` filter: skip (neutral,
+    # not failed) for any base other than `dev`, so a `dev`->`main` PR never
+    # reports a red check even while this change is still propagating to `main`.
+    if: github.event.pull_request.base.ref == 'dev'
     runs-on: ubuntu-latest
     steps:
       - name: Check out base ref (trusted policy copy)

@@ -1,0 +1,66 @@
+name: Sync main -> dev
+
+# Keep dev in sync with main after a release (ADR 0008).
+#
+# release-please cuts releases on main: when its `chore(main): release ...` PR
+# merges, the version bump + CHANGELOG commit lives ONLY on main. This workflow
+# opens a back-merge PR (main -> dev) so dev catches up automatically — you just
+# merge it (one click).
+#
+# Why `push: main` and not `release: published`: release-please creates the
+# GitHub Release with GITHUB_TOKEN, and GITHUB_TOKEN-created events do not
+# trigger other workflows — a release trigger would never fire. The human
+# merging the release PR pushes main, which triggers reliably.
+#
+# Why it opens a PR instead of auto-merging: a bot-opened PR does not trigger
+# dev's required status checks (GITHUB_TOKEN limitation), so once you add
+# required checks to dev, auto-merge would stall. Opening the PR for a one-click
+# merge behaves the same before and after that — no silent stalls.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sync-main-to-dev
+  cancel-in-progress: false
+
+jobs:
+  backmerge:
+    name: Open main -> dev back-merge PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - name: Open or update the back-merge PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin main dev
+
+          # Nothing to do when dev already has main's content (e.g. right after a
+          # dev -> main promotion, where trees match but topology differs).
+          if git diff --quiet origin/dev origin/main; then
+            echo "dev and main content already match; nothing to sync."
+            exit 0
+          fi
+
+          branch="sync/main-to-dev"
+          git push --force origin "origin/main:refs/heads/${branch}"
+
+          existing="$(gh pr list --head "${branch}" --base dev --state open \
+            --json number --jq '.[0].number // empty')"
+          if [ -n "${existing}" ]; then
+            echo "Back-merge PR #${existing} already open; its branch now points at latest main."
+          else
+            gh pr create --base dev --head "${branch}" \
+              --title "chore: sync main -> dev" \
+              --body "Automated back-merge (ADR 0008): brings release commit(s) from \`main\` into \`dev\` so the branches stay in sync. Merge to keep dev current."
+          fi

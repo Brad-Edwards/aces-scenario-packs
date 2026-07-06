@@ -6,7 +6,8 @@ enforce them, so consumers install one version-matched artifact instead of
 vendoring the contract.
 """
 
-# Single committed source of truth for the version (ADR 0007). tools/release.py
-# bumps this from the towncrier fragments; hatchling reads it via
-# [tool.hatch.version] path. Do not edit by hand.
-__version__ = "0.1.0"
+from importlib.metadata import version
+
+# The version lives in pyproject.toml ([project].version), bumped by release-please
+# (ADR 0008); __version__ derives from the installed package metadata.
+__version__ = version("aces-scenario-packs")

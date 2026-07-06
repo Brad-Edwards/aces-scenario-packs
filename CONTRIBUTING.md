@@ -11,27 +11,21 @@ When you work on a change:
   `docs/scenario-packs.md` — this repo defines and validates the pack format; it
   does not host packs.
 - Run the verification commands in `AGENTS.md` before opening a PR.
-- For a user-visible change, add a changelog fragment under
-  [`changelog.d/`](changelog.d/) (see its README) — don't edit `CHANGELOG.md`
-  directly.
+- **Never edit `CHANGELOG.md`** — release-please owns it.
 
 ## Changelog & releases
 
-The version is **driven by the changelog** (ADR 0007), so it can't drift from
-`CHANGELOG.md`. The **fragment type** you add decides the bump:
-`breaking`/`removed`→major, `added`/`changed`/`deprecated`→minor,
-`security`/`fixed`→patch. You never hand-edit a version.
+Releases are managed by **release-please** (ADR 0008) — merge-driven, nothing
+hand-run. Your **PR title is a Conventional Commit** and decides the version:
+`feat:`→minor, `fix:`/`perf:`→patch, `feat!:`/`BREAKING CHANGE:`→major (pre-1.0
+demotes major→minor); `docs`/`chore`/`refactor`/`test`/`ci`/`build`→no release. A
+CI check enforces conventional titles and bans agent-branding prefixes. Feature
+PRs are squash-merged, so the title *is* the commit — get it right.
 
-To cut a release, run `python tools/release.py` (it computes the version from the
-fragments, writes `__version__`, and collates `CHANGELOG.md`), commit on a
-`release/vX.Y.Z` branch, and open a PR to `main`; merging it publishes. See
-[ADR 0007](docs/decisions/adrs/0007-changelog-driven-versioning.md).
-
-Separately, PR titles must follow
-[Conventional Commits](https://www.conventionalcommits.org) (`feat:`, `fix:`,
-`docs:`, `chore:`, …) — a CI check enforces this and bans agent-branding
-prefixes. That keeps history tidy; it does **not** drive the version. Feature PRs
-are squash-merged, so the title *is* the commit — get it right.
+You never bump a version or edit the changelog. As PRs land on `main`,
+release-please maintains a `chore(main): release X.Y.Z` PR (version bump +
+`CHANGELOG.md`); merging that PR tags and publishes. See
+[ADR 0008](docs/decisions/adrs/0008-adopt-release-please.md).
 
 Changes to the public contract or schemas should include the rationale, the
 compatibility impact, and how you validated them. If you're moving content in

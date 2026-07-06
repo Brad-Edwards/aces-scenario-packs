@@ -7,9 +7,16 @@ package.
 
 ## Repository Boundaries
 
-- ACES core semantics (the SDL) live in `Brad-Edwards/aces`.
-- The reusable scenario-pack definition, schemas, template, and
-  authoring/validation tooling live here.
+This repository is **subordinate to ACES core** (`aces-sdl` /
+`Brad-Edwards/aces`) and exists to make authoring and shipping ACES scenarios
+easier. It defines **zero extensions** to ACES semantics
+(see [ADR 0009](docs/decisions/adrs/0009-scenario-packs-subordinate-to-aces.md)).
+
+- ACES core owns all scenario semantics — the SDL and its objectives,
+  conditions, evidence, and participant/attacker behaviour. Where ACES owns a
+  concept, consume it from ACES; never redefine or extend it here.
+- This repository owns only the scenario-pack layout and the
+  authoring/validation/release tooling.
 - Actual scenario packs live in their own catalog repos, not here.
 - Don't import downstream catalog names, paths, branch rules, labels, product
   assumptions, or private deployment vocabulary into the canonical docs.

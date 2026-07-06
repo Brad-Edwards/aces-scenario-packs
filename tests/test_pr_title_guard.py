@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _GUARD = Path(__file__).resolve().parents[1] / "tools" / "check_pr_title.py"
 _spec = importlib.util.spec_from_file_location("check_pr_title", _GUARD)
@@ -27,6 +29,19 @@ def _rules(title: str) -> set[str]:
 
 
 class PrTitleGuardTests(unittest.TestCase):
+    def setUp(self):
+        # main() falls back to the ambient GITHUB_EVENT_PATH / PR_TITLE when those
+        # inputs are not passed explicitly. Under a bot-authored PR (e.g. a
+        # dependabot run), GITHUB_EVENT_PATH points at a real event whose author
+        # is `<bot>[bot]`, which would silently trigger main()'s automated-author
+        # exemption and mask the `--title` assertions below (return 0, not 1).
+        # Scrub those vars so each test exercises only the inputs it passes.
+        env = mock.patch.dict(os.environ, clear=False)
+        env.start()
+        self.addCleanup(env.stop)
+        for var in ("GITHUB_EVENT_PATH", "PR_TITLE"):
+            os.environ.pop(var, None)
+
     def test_valid_conventional_titles_pass(self):
         for title in (
             "feat: add the widget",

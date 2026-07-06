@@ -4,7 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aces-scenario-packs"
-dynamic = ["version"]
+# Static version, bumped by release-please on release (ADR 0008).
+version = "0.1.0"
 description = "ACES scenario-pack definition, schemas, template, and authoring/validation tooling."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,9 +19,6 @@ classifiers = [
 ]
 dependencies = ["PyYAML>=6"]
 
-[project.optional-dependencies]
-dev = ["towncrier>=23.11.0"]
-
 [project.urls]
 Homepage = "https://github.com/Brad-Edwards/aces-scenario-packs"
 Repository = "https://github.com/Brad-Edwards/aces-scenario-packs"
@@ -30,11 +28,6 @@ aces-pack-validate = "aces_scenario_packs.content_ci:main"
 aces-pack-release = "aces_scenario_packs.release:main"
 aces-new-pack = "aces_scenario_packs.new_pack:main"
 aces-pack-issue-skeleton = "aces_scenario_packs.issue_skeleton:main"
-
-# The version is a single committed literal in the package __init__ (ADR 0007),
-# read here by hatchling. tools/release.py bumps it from the changelog fragments.
-[tool.hatch.version]
-path = "src/aces_scenario_packs/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/aces_scenario_packs"]
@@ -49,7 +42,6 @@ include = [
     "/CHANGELOG.md",
 ]
 
-# Release automation (ADR 0007): tools/release.py computes the next version from
-# the changelog.d/ fragment types, writes the __version__ literal above, and
-# collates CHANGELOG.md via towncrier. The release workflow tags it; hatchling
-# reads __version__ for the build. No hatch-vcs, no commit-message versioning.
+# Release automation (ADR 0008): release-please maintains a release PR that bumps
+# [project].version and CHANGELOG.md from Conventional Commit history; merging it
+# tags + publishes. No dynamic version, no hatch-vcs, no towncrier.

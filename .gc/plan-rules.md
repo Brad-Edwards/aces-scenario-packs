@@ -4,35 +4,26 @@ Repo-specific rules the `/implement` workflow MUST follow here, in addition to
 the generic workflow. Ground Control injects this file into planning via
 `.ground-control.yaml` (`rules.plan_rules`).
 
-## Releases & versioning (ADR 0007 — hard requirement)
+## Releases & versioning (ADR 0008 — hard requirement)
 
-- **Never hand-edit the version or changelog.** `__version__` in
-  `src/aces_scenario_packs/__init__.py` is a committed literal that only
-  `tools/release.py` bumps. Do **not** edit `__version__` or `CHANGELOG.md` in a
-  feature PR. A PR that does is wrong; drop that change.
-- **Add a changelog fragment for every user-visible change.** Create
-  `changelog.d/<issue>.<type>.md` (body = one bullet). The fragment **type is the
-  release decision** (this is the rubric):
-  - `added` / `changed` / `deprecated` → **minor**
-  - `security` / `fixed` → **patch**
-  - `breaking` / `removed` → **major** (pre-1.0 → minor)
-  - One-line test: *"would a consumer of the `aces-scenario-packs` package observe
-    this?"* Yes → add a fragment. Repo-internal only (CI, tests, refactors) → no
-    fragment, no release.
-- **Never add release/tag/publish steps or run towncrier build in a feature PR.**
-  Releasing is a separate act: run `python tools/release.py` (computes the version
-  from the fragments, writes `__version__`, collates `CHANGELOG.md`), commit on a
-  `release/vX.Y.Z` branch, and open a PR to `main`.
-- **PR titles MUST be Conventional Commits** — `type: summary`, `type` one of
-  `feat fix docs chore refactor test ci build perf style revert`. A required CI
-  check (`PR title guard`, `tools/check_pr_title.py`) blocks non-conforming titles
-  and bans agent/tool prefixes like `[claude]`/`[codex]`. This keeps history tidy;
-  it does **not** drive the version (fragments do).
-- **Merge habits:** feature PRs are **squash-merged** into `dev`. `dev`→`main` is
-  promoted with a **merge or rebase — never squash**. Promoting `dev`→`main` is
-  what publishes the prepared release.
+- **Never hand-edit the version or changelog.** The version lives in
+  `pyproject.toml` (`[project].version`) and is bumped by **release-please** only;
+  `__version__` derives from installed metadata. Do **not** edit `[project].version`,
+  `__version__`, or `CHANGELOG.md` in a feature PR — release-please owns them. A PR
+  that does is wrong; drop that change.
+- **The PR title (Conventional Commit) is the release decision** — there are no
+  changelog fragments and no scripts to run. Rubric: `feat:`→minor,
+  `fix:`/`perf:`→patch, `feat!:`/`BREAKING CHANGE:`→major (pre-1.0 → minor);
+  `docs`/`chore`/`refactor`/`test`/`ci`/`build`→no release.
+- **PR titles MUST be Conventional Commits** — a required CI check
+  (`PR title guard`, `tools/check_pr_title.py`) blocks non-conforming titles and
+  bans agent/tool prefixes like `[claude]`/`[codex]`.
+- **Never add release/tag/publish steps to a feature PR.** release-please maintains
+  the `chore(main): release X.Y.Z` PR automatically; a human merges it to publish.
+- **Merge habits:** feature PRs are **squash-merged** (the title becomes the
+  Conventional Commit release-please reads).
 
-See [ADR 0007](../docs/decisions/adrs/0007-changelog-driven-versioning.md).
+See [ADR 0008](../docs/decisions/adrs/0008-adopt-release-please.md).
 
 ## Repository boundary
 

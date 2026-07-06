@@ -50,7 +50,16 @@ jobs:
   sonar:
     runs-on: ubuntu-latest
     needs: [verify]
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # SonarCloud needs SONAR_TOKEN, which GitHub withholds from PRs that don't
+    # carry repository secrets: forks and Dependabot PRs (Dependabot runs read a
+    # separate secret store that this token isn't in). Skip both — the scan still
+    # runs on the post-merge push to dev/main with full token access, so the
+    # quality gate covers the integrated code. Dependency bumps don't touch
+    # sonar.sources (src/) anyway, so there is nothing new to analyze here.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.actor != 'dependabot[bot]')
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4

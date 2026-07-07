@@ -4,11 +4,13 @@ A scenario pack is declarative content plus the tooling, docs, and evidence for
 a known-good reference implementation. It is not the range engine, scoreboard,
 portal, class-management UI, or telemetry product.
 
-This repository is the authoritative home for that format. It ships the layout
-contract, schemas, template, and shared oracle model as package data, plus the
-tools that enforce them, so an author validates against the same version they
-build against. Packs live in their own catalog repositories and consume this
-package; this repo does not host packs.
+This repository is the authoritative home for that format, and is subordinate to
+ACES core (`aces-sdl`): it exists to make authoring and shipping ACES scenarios
+easier and defines no extensions to ACES semantics
+([ADR 0009](decisions/adrs/0009-scenario-packs-subordinate-to-aces.md)). It ships
+the layout contract, template, and tooling as package data, so an author
+validates against the same version they build against. Packs live in their own
+catalog repositories and consume this package; this repo does not host packs.
 
 ## Required Shape
 

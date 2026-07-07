@@ -43,9 +43,15 @@ aces-pack-release check --all
 
 ## Boundary
 
-- **ACES core** owns the Scenario Definition Language (SDL) and its semantics.
+This repository is **subordinate to ACES core** (`aces-sdl`): it exists to make
+authoring and shipping ACES scenarios easier, and defines **no extensions** to
+ACES semantics
+([ADR 0009](docs/decisions/adrs/0009-scenario-packs-subordinate-to-aces.md)).
+
+- **ACES core** owns the Scenario Definition Language (SDL) and all scenario
+  semantics. Where ACES owns a concept, packs consume it from ACES.
 - **This repository** owns how a scenario pack is structured, authored,
-  validated, and released — plus the tools that enforce it.
+  validated, and released — the layout and the tools that enforce it.
 - **Downstream catalogs** hold the actual packs and any private runtime,
   delivery, or product integrations.
 

@@ -3,6 +3,11 @@
 # fully-populated reference (sources, artifact classification, safety
 # attestations, the publication review gate, and a customer overlay); a real
 # pack's docs/provenance-ledger.yaml carries only the rows that apply to it.
+#
+# Pack TRUST (integrity/authenticity) is owned by the ACES
+# reusable-asset-trust-policy/v1 (ACES ADR-071); this ledger carries only the
+# pack-domain licensing/safety/publication facts ACES does not define
+# (ADR 0009/ADR 0010).
 schema_version: 1
 pack:
   name: example-commercial-pack

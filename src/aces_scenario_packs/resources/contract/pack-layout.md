@@ -176,6 +176,41 @@ and cites the ledger. A worked example is
 The provenance schema is enforced for every pack: it is the content-safety and
 publication-review gate, and pack exports carry it rather than bypassing it.
 
+#### ACES trust authority (ADR 0010)
+
+A scenario pack is a `reusable_scenario` asset in ACES's own trust vocabulary.
+**ACES core is the authority for pack integrity and authenticity**, via the
+reusable-asset trust policy (`reusable-asset-trust-policy/v1`, `$id`
+`https://aces.dev/schemas/reusable-asset-trust-policy-v1.json`; ACES ADR-071).
+That policy owns the `integrity_digest`, `authenticity_signature`,
+`provenance_lock_record`, `governance_source`, and `artifact_checksum` evidence
+classes and their enforcement levels. Per
+[ADR 0009](../../../docs/decisions/adrs/0009-scenario-packs-subordinate-to-aces.md)
+and [ADR 0010](../../../docs/decisions/adrs/0010-consume-aces-reusable-asset-trust-policy.md),
+this ledger **consumes** that policy as the authority and **re-defines none of
+it**: a pack's cryptographic integrity/authenticity and its composed-module
+(SDL) dependency provenance are established by ACES mechanisms
+(scenario-snapshot digest binding, `aces.lock.json` digest pins, RegistryTrustPolicy
+signatures), not here. ACES schemas are `stability: draft` today, so the ledger
+references the policy now and the explicit upstream version pin (dependency +
+compatibility tests) lands once ACES marks it stable.
+
+The ledger is scoped to pack-domain facts ACES does **not** define. Every field
+has one documented status:
+
+| Ledger field | Status |
+|---|---|
+| `pack`, `schema_version` | Pack-domain: ledger identity and version. |
+| `sources[]` (`license` / `usage` / `attribution` / `used` / `excluded`) | Pack-domain: content-origin licensing and attribution of external, non-ACES material. Distinct from the ACES `provenance_lock_record` evidence class (digest-pinning of composed ACES modules via `aces.lock.json`), which stays with ACES. |
+| `artifacts[].classification` (`open` … `customer-specific`) | Pack-domain: distribution / redistribution rights — **not** an ACES trust enforcement level. |
+| `content_safety{}` | Pack-domain: content-safety exclusion attestations; ACES defines no content-safety evidence class. |
+| `review{}` | Pack-domain: publication-clearance gates; not ACES `governance_source`. |
+| `overlays[]` | Pack-domain: customer-overlay distribution containment. |
+| `integrity_digest`, `authenticity_signature`, `provenance_lock_record`, `governance_source`, `artifact_checksum` | **ACES-owned → deferred to ACES.** The ledger neither carries nor re-defines them. |
+
+If a pack needs trust expressivity the ACES policy lacks, that gap is raised
+**upstream in ACES**, never worked around with a pack-side extension.
+
 The ledger has four parts:
 
 - **`sources[]`** — every upstream corpus, framework, tool, dataset, research

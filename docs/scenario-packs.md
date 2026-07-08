@@ -105,6 +105,24 @@ The provenance schema is enforced for every pack: it is the content-safety and
 publication-review gate, and pack exports carry the ledger rather than bypassing
 it.
 
+**ACES is the authority for pack trust.** A scenario pack is a `reusable_scenario`
+asset in the ACES reusable-asset trust policy
+(`reusable-asset-trust-policy/v1`; ACES ADR-071), which owns pack integrity and
+authenticity (`integrity_digest`, `authenticity_signature`,
+`provenance_lock_record`, `governance_source`, `artifact_checksum`). Per
+[ADR 0009](decisions/adrs/0009-scenario-packs-subordinate-to-aces.md) and
+[ADR 0010](decisions/adrs/0010-consume-aces-reusable-asset-trust-policy.md), this
+ledger is scoped to pack-domain facts ACES does not define — content-origin
+licensing/attribution (`sources[]`), distribution class (`artifacts[]`),
+content-safety attestations (`content_safety{}`), publication review (`review{}`),
+and customer-overlay containment (`overlays[]`) — and re-defines none of the
+ACES-owned trust concepts; those are established by ACES mechanisms
+(scenario-snapshot digest, `aces.lock.json`, RegistryTrustPolicy signatures). ACES
+schemas are `stability: draft`, so the ledger references the policy now and the
+explicit upstream pin lands once ACES marks it stable. The bundled
+[layout contract](../src/aces_scenario_packs/resources/contract/pack-layout.md)
+carries the full field-by-field mapping.
+
 ## Validation Oracles
 
 When a pack ships an oracle or scoring layer, keep the hidden contract in

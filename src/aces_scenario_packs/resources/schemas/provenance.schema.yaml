@@ -1,19 +1,57 @@
 $schema: "https://json-schema.org/draft/2020-12/schema"
 $id: "https://example.com/aces-scenario-pack/scenario-pack-provenance.schema.yaml"
-title: ACES scenario pack provenance ledger
+title: ACES scenario pack provenance ledger (pack-domain; trust deferred to ACES)
 description: >
-  Canonical, machine-readable provenance, licensing, content-safety, publication
-  and overlay-boundary contract for a scenario pack. pack.yaml stays the catalog
-  identity entrypoint and references this ledger; docs/lineage.md stays human
-  prose and cites it. This ledger is the source of truth for WHERE content came
-  from, WHAT may be done with it (distribution class), whether it is SAFE to
-  ship, and whether it has been CLEARED to publish.
+  Machine-readable pack-domain ledger for a scenario pack's content ORIGIN &
+  LICENSING, DISTRIBUTION classification, CONTENT-SAFETY exclusion attestations,
+  and PUBLICATION review — plus customer-overlay containment. pack.yaml stays the
+  catalog identity entrypoint and references this ledger; docs/lineage.md stays
+  human prose and cites it. It is the source of truth for WHERE content came from,
+  WHAT may be done with it (distribution class), whether it is SAFE to ship, and
+  whether it has been CLEARED to publish.
+
+  ACES core is the authority for pack TRUST. A scenario pack is a `reusable_scenario`
+  asset in the ACES reusable-asset-trust-policy (schema_version
+  `reusable-asset-trust-policy/v1`, $id
+  https://aces.dev/schemas/reusable-asset-trust-policy-v1.json; ACES ADR-071),
+  which owns the integrity_digest, authenticity_signature, provenance_lock_record,
+  governance_source, and artifact_checksum evidence classes and their enforcement
+  levels. Per ADR 0009/ADR 0010 this repository is subordinate to ACES: this ledger
+  neither carries nor re-defines any of those ACES-owned trust concepts — a pack's
+  cryptographic integrity/authenticity and its composed-module (SDL) dependency
+  provenance are established by ACES mechanisms (scenario-snapshot digest binding,
+  aces.lock.json digest pins, RegistryTrustPolicy signatures), not here.
+
+  ACES schemas are currently stability:draft, so this ledger REFERENCES that policy
+  as the authority now and does not vendor, fork, or pin it; the explicit upstream
+  version pin (dependency + compatibility tests, consumed from the aces-sdl corpus)
+  lands once ACES marks the policy stable (ADR 0010).
 
   Distribution classes (open/redistributable/internal-only/commercial-only/
-  generated/customer-specific) are deliberately SEPARATE from
+  generated/customer-specific) are pack-domain PUBLISHING classes, NOT ACES trust
+  enforcement levels. They are also deliberately SEPARATE from
   pack.compatibility.yaml's runtime-visibility export values
   (public/operator/oracle/private/commercial): one axis answers "what may we
   publish, sell, or hand a customer", the other answers "who sees it at runtime".
+$comment: >
+  ACES-alignment field disposition (issue #82; see contract/pack-layout.md and
+  docs/scenario-packs.md for the full mapping). Every retained field is either
+  mapped to an ACES trust concept or documented as pack-domain absent upstream —
+  and NONE re-defines an ACES-owned evidence class:
+  • pack / schema_version — pack-domain: ledger identity & version.
+  • sources[] — pack-domain: content-origin licensing/attribution of external,
+    non-ACES material. Distinct from the ACES provenance_lock_record evidence
+    class (aces.lock.json digest-pinning of composed ACES modules), which stays
+    with ACES; this ledger does not attest module-dependency provenance.
+  • artifacts[].classification — pack-domain: distribution/redistribution rights;
+    not an ACES trust enforcement level.
+  • content_safety — pack-domain: exclusion attestations; ACES defines no
+    content-safety evidence class.
+  • review — pack-domain: publication clearance gates; not ACES governance_source.
+  • overlays[] — pack-domain: customer-overlay distribution containment.
+  ACES-OWNED, deferred (never declared here): integrity_digest,
+  authenticity_signature, provenance_lock_record, governance_source,
+  artifact_checksum.
 type: object
 additionalProperties: false
 required:

@@ -30,30 +30,6 @@ delivery_bundles: []
 platform_features: []
 assets: []
 
-scoring:
-  status: not_shipped
-  mode: none
-  references: []
-validation_oracle:
-  status: not_shipped
-  mode: none
-  references: []
-telemetry:
-  status: not_shipped
-  mode: none
-  references: []
-
-lifecycle:
-  reset:
-    status: not_shipped
-    references: []
-  rebuild:
-    status: not_shipped
-    references: []
-  teardown:
-    status: not_shipped
-    references: []
-
 operator_surfaces: []
 validation:
   commands:

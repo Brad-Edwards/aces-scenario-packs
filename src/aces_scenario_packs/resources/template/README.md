@@ -10,8 +10,7 @@ is trying to achieve.
 Identity, version, authors, status, and which layers ship live in
 [`pack.yaml`](pack.yaml) — fill that in first.
 Product compatibility, artifact visibility boundaries, runtime/provider
-profiles, delivery bundles, scoring/oracle/telemetry references, lifecycle
-hooks, operator surfaces, and validation gates live in
+profiles, delivery bundles, operator surfaces, and validation gates live in
 [`pack.compatibility.yaml`](pack.compatibility.yaml) when the pack needs that
 commercial/catalog projection.
 

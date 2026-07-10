@@ -23,8 +23,7 @@ the layout contract bundled in the package (`contract/pack-layout.md`):
   referenced from `pack.yaml` via `provenance_ledger:`.
 - `pack.compatibility.yaml` when a pack needs a validated product/commercial
   compatibility projection over runtime profiles, delivery bundles, platform
-  features, artifact boundaries, scoring/oracle/telemetry references,
-  lifecycle hooks, operator surfaces, and validation gates.
+  features, artifact boundaries, operator surfaces, and validation gates.
 - `sdl/` for the scenario start state and structured scenario definition.
 - `assets/` for custom files, planted content, host assets, and briefing assets.
 - `flags/`, `challenges/`, and `ctfd/` as an all-or-nothing flag layer.
@@ -69,8 +68,11 @@ The compatibility manifest separates:
   `agent-benchmark`, `demo`);
 - participant/public, operator-only, oracle-only, private, and commercial
   artifact boundaries;
-- shipped, planned, and not-shipped scoring, oracle, telemetry, reset, rebuild,
-  teardown, and operator surfaces.
+- assets, operator surfaces, and validation gates.
+
+It carries **zero extensions to ACES semantics**: scoring, validation-oracle,
+telemetry, and lifecycle (reset/rebuild/teardown) are ACES/runtime concerns and
+are deliberately not manifest layers ([ADR 0009](decisions/adrs/0009-scenario-packs-subordinate-to-aces.md)).
 
 The manifest indexes existing pack-local files. It is not a runtime engine,
 dependency lockfile, provider adapter, scoreboard, telemetry product, or proof
@@ -125,9 +127,9 @@ carries the full field-by-field mapping.
 
 ## Validation Oracles
 
-When a pack ships an oracle or scoring layer, keep the hidden contract in
-operator/oracle-only pack-local files and reference those files from
-`pack.compatibility.yaml`. The shared oracle model bundled in the package defines
+When a pack ships an oracle layer, keep the hidden contract in
+operator/oracle-only pack-local files and map them through the manifest's
+`oracle_only` artifact boundary. The shared oracle model bundled in the package defines
 the common authoring shape for canonical steps, accepted alternates, evidence,
 prerequisites, failure states, consumer adapters, and operator or benchmark
 exports.
@@ -146,20 +148,18 @@ ACES uses **delivery/audience bundles** for operating profiles:
 content overlays under `profiles/`; they are not runtime/provider profiles.
 Selecting a bundle changes which participant, facilitator, defender, benchmark,
 or presenter files are exposed. It does not change the base hidden plan,
-topology, planted content, scoring oracle, telemetry hooks, reset semantics,
-flags, reference tests, or golden proof.
+topology, planted content, flags, reference tests, or golden proof.
 
 The standard bundle responsibilities are:
 
 - `guided`: staged objectives, progressive hints, teaching notes or facilitator
   pacing, and answer checks/checkpoints.
 - `unguided`: terse mission brief, participant objectives, rules of engagement,
-  and operator-only calibrated scoring or post-run reveal material.
+  and operator-only post-run reveal material.
 - `purple-team`: defender injects, detection goals, expected alerts, blue-team
   tasks, and debrief prompts.
 - `agent-benchmark`: deterministic task envelope, participant-safe objective
-  contract, no-facilitator run metadata, operator-only scoring/oracle join, and
-  telemetry export reference.
+  contract, no-facilitator run metadata, and an operator-only oracle join.
 - `demo`: shortened path, scripted reset reference, reduced-resource runtime
   compatibility, high-signal proof moments, and presenter script.
 

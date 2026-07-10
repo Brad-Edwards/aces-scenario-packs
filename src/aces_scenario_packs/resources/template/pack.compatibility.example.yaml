@@ -112,7 +112,7 @@ platform_features:
   - feature_id: ctfd
     status: optional
     runtime_profiles: [aws_full]
-    description: CTFd projection over the scoring/oracle evidence.
+    description: Reference CTFd loader for the pack's flag/challenge layer.
 
 assets:
   - asset_id: participant-briefing
@@ -127,37 +127,6 @@ assets:
     path: oracle/success-states.yaml
     visibility: oracle
     status: shipped
-
-scoring:
-  status: shipped
-  mode: hybrid
-  references:
-    - path: flags/placement.yaml
-    - path: challenges/challenges.yaml
-validation_oracle:
-  status: shipped
-  mode: objectives
-  references:
-    - path: oracle/success-states.yaml
-telemetry:
-  status: shipped
-  mode: telemetry
-  references:
-    - path: telemetry/events.yaml
-
-lifecycle:
-  reset:
-    status: shipped
-    references:
-      - path: build/reset.sh
-  rebuild:
-    status: shipped
-    references:
-      - path: build/
-  teardown:
-    status: shipped
-    references:
-      - path: build/cleanup.sh
 
 operator_surfaces:
   - surface_id: range-ops-runbook

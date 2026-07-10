@@ -61,6 +61,8 @@ _REPO = os.getcwd()
 SCEN = os.path.join(_REPO, "scenarios")
 
 COMPATIBILITY_MANIFEST_FILE = "pack.compatibility.yaml"
+# Human-readable label used in failure messages for the compatibility manifest.
+COMPATIBILITY_MANIFEST_LABEL = "compatibility manifest"
 PACK_MANIFEST_FILE = "pack.yaml"
 COMPATIBILITY_SCHEMA_FILE = "pack-compatibility.schema.yaml"
 PROVENANCE_SCHEMA_FILE = "provenance.schema.yaml"
@@ -724,7 +726,7 @@ def _validate_compatibility_manifest(pack: str, pack_yaml: dict[str, object],
     """Validate compatibility manifest."""
     pack_root = os.path.join(SCEN, pack)
     loaded = _load_pack_doc(pack, pack_yaml, "compatibility_manifest",
-                            "compatibility manifest", compatibility_schema_path(),
+                            COMPATIBILITY_MANIFEST_LABEL, compatibility_schema_path(),
                             failures, required=False)
     if loaded is None:
         return
@@ -1088,7 +1090,7 @@ def _check_packaged_manifest_no_extension_layers(failures: list[str]) -> None:
     ):
         if not os.path.isfile(path):
             continue
-        manifest = _load_yaml(path, failures, "compatibility manifest")
+        manifest = _load_yaml(path, failures, COMPATIBILITY_MANIFEST_LABEL)
         for key in _forbidden_manifest_keys(manifest):
             failures.append(
                 f"ANTI-EXTENSION: {label} carries forbidden ACES-semantic layer "
@@ -1106,7 +1108,7 @@ def _check_pack_no_extension_layers(pack: str, failures: list[str]) -> None:
         if isinstance(rel, str) and _path_inside_pack(pack_root, rel):
             manifest_path = os.path.join(pack_root, rel)
             if os.path.isfile(manifest_path):
-                manifest = _load_yaml(manifest_path, failures, "compatibility manifest")
+                manifest = _load_yaml(manifest_path, failures, COMPATIBILITY_MANIFEST_LABEL)
                 for key in _forbidden_manifest_keys(manifest):
                     failures.append(
                         f"ANTI-EXTENSION: scenarios/{pack}/{rel} carries forbidden "

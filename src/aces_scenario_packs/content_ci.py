@@ -23,6 +23,11 @@ so every present and future pack benefits:
   6. **Shared oracle model** — the reusable operator/oracle-only model bundled
      with this package validates its fixtures and tests without being treated as
      a scenario pack.
+  7. **Anti-extension guard** — the compatibility schema, the bundled
+     template/example, and every pack carry zero extensions to ACES semantics:
+     no ``scoring`` / ``validation_oracle`` / ``telemetry`` / ``lifecycle``
+     manifest layer and no ``sdl/`` semantic ledger reintroduces an ACES/runtime
+     concept (ADR 0009, issue #83).
 
 Stdlib + PyYAML only. Run locally exactly as CI does:
 
@@ -56,6 +61,8 @@ _REPO = os.getcwd()
 SCEN = os.path.join(_REPO, "scenarios")
 
 COMPATIBILITY_MANIFEST_FILE = "pack.compatibility.yaml"
+# Human-readable label used in failure messages for the compatibility manifest.
+COMPATIBILITY_MANIFEST_LABEL = "compatibility manifest"
 PACK_MANIFEST_FILE = "pack.yaml"
 COMPATIBILITY_SCHEMA_FILE = "pack-compatibility.schema.yaml"
 PROVENANCE_SCHEMA_FILE = "provenance.schema.yaml"
@@ -75,6 +82,20 @@ CONTENT_SAFETY_FLAGS = (
 # checklist covering licensing, attribution, sensitive data, and offensive
 # tooling boundaries). `customer-overlay` is an optional extra gate.
 REQUIRED_REVIEW_GATES = ("licensing", "attribution", "sensitive-data", "offensive-tooling")
+
+# Anti-extension guard vocabulary (issue #83). This repository defines ZERO
+# extensions to ACES semantics (ADR 0009): scoring, validation-oracle, telemetry,
+# and lifecycle (reset/rebuild/teardown) are ACES/runtime concerns, so they are
+# not compatibility-manifest layers, and the pack-local semantic ledgers that
+# projected them do not belong in `sdl/` (which holds ACES SDL documents only).
+# These frozensets are the single source of truth the guard reads. They are named
+# constants — not inline literals — so a later change (#84/#86) can swap in the
+# ACES contract corpus as the authority without rewriting the gate. The guard is
+# structural: it inspects declared schema properties and manifest keys, never free
+# prose, so docs that name a removed concept to reject or defer it never trip it.
+FORBIDDEN_MANIFEST_LAYERS = frozenset(
+    {"scoring", "validation_oracle", "telemetry", "lifecycle"})
+FORBIDDEN_SDL_LEDGERS = frozenset({"scoring.yaml", "telemetry.yaml", "objectives.yaml"})
 
 
 def compatibility_schema_path() -> str:
@@ -705,7 +726,7 @@ def _validate_compatibility_manifest(pack: str, pack_yaml: dict[str, object],
     """Validate compatibility manifest."""
     pack_root = os.path.join(SCEN, pack)
     loaded = _load_pack_doc(pack, pack_yaml, "compatibility_manifest",
-                            "compatibility manifest", compatibility_schema_path(),
+                            COMPATIBILITY_MANIFEST_LABEL, compatibility_schema_path(),
                             failures, required=False)
     if loaded is None:
         return
@@ -1035,6 +1056,90 @@ def check_golden_checklist(failures: list[str]) -> None:
             print(f"  [ok] {pack}/docs/golden-readiness-checklist.md")
 
 
+def _forbidden_manifest_keys(manifest: object) -> list[str]:
+    """Sorted forbidden-layer keys present at the top level of a manifest dict."""
+    if not isinstance(manifest, dict):
+        return []
+    return sorted(key for key in manifest if key in FORBIDDEN_MANIFEST_LAYERS)
+
+
+def _check_schema_no_extension_layers(failures: list[str]) -> None:
+    """The packaged compatibility schema must declare no forbidden layer.
+
+    Structural check: a forbidden concept is a *declared property* of the schema,
+    not a word in its description. This is the durable enforcement that the schema
+    itself cannot silently reintroduce a removed ACES-semantic layer.
+    """
+    schema = _load_yaml(compatibility_schema_path(), failures, "compatibility schema")
+    if not isinstance(schema, dict):
+        return
+    for key in sorted(k for k in _schema_properties(schema)
+                      if k in FORBIDDEN_MANIFEST_LAYERS):
+        failures.append(
+            f"ANTI-EXTENSION: {COMPATIBILITY_SCHEMA_FILE} declares forbidden "
+            f"ACES-semantic layer {key!r} as a manifest property; scoring/"
+            "validation_oracle/telemetry/lifecycle are ACES concerns (ADR 0009)")
+
+
+def _check_packaged_manifest_no_extension_layers(failures: list[str]) -> None:
+    """The bundled template + example manifests must carry no forbidden layer."""
+    for path, label in (
+        (compatibility_example_path(), COMPATIBILITY_EXAMPLE_FILE),
+        (os.path.join(_TEMPLATE_DIR, COMPATIBILITY_MANIFEST_FILE),
+         os.path.join("template", COMPATIBILITY_MANIFEST_FILE)),
+    ):
+        if not os.path.isfile(path):
+            continue
+        manifest = _load_yaml(path, failures, COMPATIBILITY_MANIFEST_LABEL)
+        for key in _forbidden_manifest_keys(manifest):
+            failures.append(
+                f"ANTI-EXTENSION: {label} carries forbidden ACES-semantic layer "
+                f"{key!r} (ADR 0009)")
+
+
+def _check_pack_no_extension_layers(pack: str, failures: list[str]) -> None:
+    """A catalog pack must not reintroduce a removed layer or `sdl/` ledger."""
+    pack_root = os.path.join(SCEN, pack)
+    pack_yaml_path = os.path.join(pack_root, PACK_MANIFEST_FILE)
+    pack_yaml = (_load_yaml(pack_yaml_path, failures, "manifest")
+                 if os.path.isfile(pack_yaml_path) else None)
+    if isinstance(pack_yaml, dict):
+        rel = pack_yaml.get("compatibility_manifest")
+        if isinstance(rel, str) and _path_inside_pack(pack_root, rel):
+            manifest_path = os.path.join(pack_root, rel)
+            if os.path.isfile(manifest_path):
+                manifest = _load_yaml(manifest_path, failures, COMPATIBILITY_MANIFEST_LABEL)
+                for key in _forbidden_manifest_keys(manifest):
+                    failures.append(
+                        f"ANTI-EXTENSION: scenarios/{pack}/{rel} carries forbidden "
+                        f"ACES-semantic layer {key!r} (ADR 0009)")
+    sdl_dir = os.path.join(pack_root, "sdl")
+    for ledger in sorted(FORBIDDEN_SDL_LEDGERS):
+        if os.path.isfile(os.path.join(sdl_dir, ledger)):
+            failures.append(
+                f"ANTI-EXTENSION: scenarios/{pack}/sdl/{ledger} is a removed "
+                "ACES-semantic ledger; sdl/ holds ACES SDL documents only (ADR 0009)")
+
+
+def check_anti_extension(failures: list[str]) -> None:
+    """Fail if the format or any pack reintroduces a removed ACES extension.
+
+    ADR 0009 makes this repository ACES-subordinate with zero extensions to ACES
+    semantics. This gate is the durable enforcement of that charter across the
+    schema, the bundled template/example, and every catalog pack — so a removed
+    scoring/validation_oracle/telemetry/lifecycle layer (or an `sdl/` semantic
+    ledger) cannot silently return.
+    """
+    before = len(failures)
+    _check_schema_no_extension_layers(failures)
+    _check_packaged_manifest_no_extension_layers(failures)
+    for pack in _packs():
+        _check_pack_no_extension_layers(pack, failures)
+    if len(failures) == before:
+        print(f"  [ok] anti-extension guard ({len(FORBIDDEN_MANIFEST_LAYERS)} "
+              f"forbidden layers, {len(FORBIDDEN_SDL_LEDGERS)} forbidden sdl ledgers)")
+
+
 def main(argv: list[str] | None = None) -> int:
     """Command-line entry point."""
     global _REPO, SCEN
@@ -1061,6 +1166,8 @@ def main(argv: list[str] | None = None) -> int:
     check_wizard_spider_pack_drift(failures)
     print("== manifests ==")
     check_manifest(failures)
+    print("== anti-extension guard ==")
+    check_anti_extension(failures)
     print("== provenance ledgers ==")
     check_provenance(failures)
     print("== golden readiness checklists ==")

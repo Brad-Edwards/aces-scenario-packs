@@ -109,8 +109,11 @@ required source/licensing/safety/publication contract) and **may** point at
 `compatibility_manifest: pack.compatibility.yaml`. The compatibility manifest is
 the richer product compatibility projection validated by
 [`pack-compatibility.schema.yaml`](../schemas/pack-compatibility.schema.yaml). It does not
-replace SDL, topology, scoring, telemetry, profile, build, reset, or CTFd
-ledgers. It indexes them for catalog and commercial-package consumers.
+replace SDL, topology, profile, build, or CTFd ledgers. It indexes them for
+catalog and commercial-package consumers. It carries **zero extensions to ACES
+semantics**: scoring, validation-oracle, telemetry, and lifecycle
+(reset/rebuild/teardown) are ACES/runtime concerns and are not manifest layers
+(ADR 0009).
 
 ### Compatibility manifest (`pack.compatibility.yaml`)
 
@@ -139,11 +142,10 @@ The manifest defines:
   IoMT, VPN/jump access, controlled egress, or SaaS facsimiles.
 - **Artifact boundaries**: explicit participant/public, operator-only,
   oracle-only, commercial, private, and redistributable roots.
-- **Assets, scoring, oracle, telemetry, lifecycle, and operator surfaces**:
-  references to existing pack-local ledgers and tools, not duplicated truth.
+- **Assets and operator surfaces**: references to existing pack-local files and
+  tools, not duplicated truth.
 - **Validation**: commands and gates that prove the manifest, pack layout,
-  visibility boundaries, profile bundles, scoring/oracle contracts, tests, and
-  rehearsal evidence.
+  visibility boundaries, profile bundles, tests, and rehearsal evidence.
 
 Visibility is a contract, not just a directory name. Existing roots remain
 valid equivalents:
@@ -152,12 +154,11 @@ valid equivalents:
 |---|---|
 | `participant_visible` / `public` | `assets/briefing/`, safe `assets/content/`, `profiles/_shared/`, `profiles/*/participant/`, or an explicit `public/` root |
 | `operator_only` | `profiles/*/operator/`, `docs/` operator runbooks, `tests/`, `build/`, `ctfd/`, or an explicit `operator/` root |
-| `oracle_only` / `private` | hidden-path docs, scoring/oracle ledgers, proof predicates, `sdl/*oracle*`, `sdl/scoring.yaml`, `sdl/telemetry.yaml`, or an explicit `oracle/` root |
+| `oracle_only` / `private` | hidden-path docs, oracle ledgers, proof predicates, `sdl/*oracle*`, or an explicit `oracle/` root |
 | `commercial` | bundled content a commercial catalog may ship to licensed operators, commonly `profiles/`, `build/`, `tests/`, `ctfd/`, docs, or an explicit commercial export root |
 
-If a pack introduces literal `public/`, `operator/`, `oracle/`, or
-`telemetry/` directories, map them in `pack.compatibility.yaml` before content
-relies on them. Participant-visible roots are still covered by the repo-wide
+If a pack introduces literal `public/`, `operator/`, or `oracle/` directories,
+map them in `pack.compatibility.yaml` before content relies on them. Participant-visible roots are still covered by the repo-wide
 leak scan; operator/oracle/private roots may cite hidden state, proof
 predicates, and reset internals.
 
@@ -250,9 +251,8 @@ scenario pack, and `aces-pack-validate` validates it through a dedicated
 shared-oracle gate.
 
 Pack-local files remain the source of truth for a scenario's hidden path and
-proof: `docs/attack-path.md`, `docs/scenario-design.md`, `docs/oracle-map.md`,
-`sdl/scoring.yaml`, `sdl/objectives.yaml`, `sdl/telemetry.yaml`, or equivalent
-ledgers. The shared model normalizes the common shape across packs: canonical
+proof: `docs/attack-path.md`, `docs/scenario-design.md`, `docs/oracle-map.md`, or
+equivalent operator/oracle-only ledgers. The shared model normalizes the common shape across packs: canonical
 steps, accepted alternates, evidence, prerequisites, failure states, consumer
 adapters, and operator or benchmark exports.
 
@@ -328,17 +328,17 @@ doesn't (a pure-emulation scenario may have neither).
 
   | Bundle id | Required artifacts | Optional artifacts | Exposure rule |
   |---|---|---|---|
-  | `guided` | Staged objectives, progressive hints, teaching notes or facilitator pacing, and answer checks/checkpoints. | Facilitator prompts, room pacing variants, remediation notes. | Participant files may teach method but must not reveal oracle ids, ordered hidden-path labels, proof predicates, or scoring maps. Facilitator notes are operator-only. |
-  | `unguided` | Terse mission brief, participant objectives, rules of engagement, and calibrated scoring reference through the existing scoring/oracle ledgers. | Post-run reveal, debrief notes, rubric summary. | Participant files contain no path hints, staged solution order, or hidden oracle vocabulary. Scoring calibration is operator-only unless expressed as participant-safe objective text. |
-  | `purple-team` | Defender injects, detection goals, expected alert references, blue-team tasks, and debrief prompts. | Timeline variants, SIEM query examples, after-action worksheet. | Defender/operator material may reference telemetry and expected alerts, but any red-team handout remains separate and leak-scanned. |
-  | `agent-benchmark` | Deterministic task envelope, participant-safe objective contract, no-facilitator run metadata, machine-readable scoring rubric or operator-only scoring map, and telemetry export reference. | Allowed assumptions, timeout/resource policy, replay metadata, result schema. | The agent-facing contract is participant-safe. Any join from public objective ids to oracle states, scoring outcomes, telemetry hooks, raw proof, or answers is operator-only. |
-  | `demo` | Shortened path description, scripted reset reference, reduced-resource runtime compatibility, high-signal proof moments, and presenter script. | Fallback script, timing notes, preflight checklist, cleanup note. | A demo may constrain exposed milestones or compatible runtime profiles, but it reuses the existing reset/build/test contracts and never creates a second hidden path or proof oracle. |
+  | `guided` | Staged objectives, progressive hints, teaching notes or facilitator pacing, and answer checks/checkpoints. | Facilitator prompts, room pacing variants, remediation notes. | Participant files may teach method but must not reveal oracle ids, ordered hidden-path labels, or proof predicates. Facilitator notes are operator-only. |
+  | `unguided` | Terse mission brief, participant objectives, and rules of engagement. | Post-run reveal, debrief notes, rubric summary. | Participant files contain no path hints, staged solution order, or hidden oracle vocabulary. Operator calibration stays operator-only unless expressed as participant-safe objective text. |
+  | `purple-team` | Defender injects, detection goals, expected alert references, blue-team tasks, and debrief prompts. | Timeline variants, SIEM query examples, after-action worksheet. | Defender/operator material may reference expected alerts and detections, but any red-team handout remains separate and leak-scanned. |
+  | `agent-benchmark` | Deterministic task envelope, participant-safe objective contract, and no-facilitator run metadata. | Allowed assumptions, timeout/resource policy, replay metadata, result schema. | The agent-facing contract is participant-safe. Any join from public objective ids to oracle states, raw proof, or answers is operator-only. |
+  | `demo` | Shortened path description, reduced-resource runtime compatibility, high-signal proof moments, and presenter script. | Fallback script, timing notes, preflight checklist, cleanup note. | A demo may constrain exposed milestones or compatible runtime profiles, but it reuses the existing build/test contracts and never creates a second hidden path or proof oracle. |
 
   Profile selection changes **content exposure only**. It does not fork the
-  scenario topology, planted content, hidden attack path, scoring oracle,
-  telemetry hooks, flags, reset semantics, or golden proof. A shortened demo can
-  expose fewer beats, and an agent benchmark can expose a deterministic task
-  envelope, but both still point back to the same base scenario contract.
+  scenario topology, planted content, hidden attack path, flags, or golden proof.
+  A shortened demo can expose fewer beats, and an agent benchmark can expose a
+  deterministic task envelope, but both still point back to the same base
+  scenario contract.
 
   A pack that ships this layer authors, at minimum:
 
@@ -346,14 +346,14 @@ doesn't (a pure-emulation scenario may have neither).
     `profile_bundles:` index pointing at `profiles/bundles.yaml`.
   - `profiles/bundles.yaml` with one row per shipped bundle, using stable
     bundle ids, audience, compatible `runtime_profiles`, shared includes,
-    participant entrypoints, operator entrypoints, and any benchmark
-    objective/scoring join paths.
+    participant entrypoints, operator entrypoints, and any benchmark objective
+    join paths.
   - The entrypoint files named by the manifest, placed under
     `profiles/_shared/`, `profiles/<bundle>/participant/`, or
     `profiles/<bundle>/operator/` according to the exposure rule.
   - A pack-local `profiles/validate_*.py` gate and `profiles/tests` suite that
     validates the manifest, pack index, runtime-profile joins,
-    participant/operator split, leak scan, and any oracle/scoring joins.
+    participant/operator split, leak scan, and any oracle joins.
   - When the pack has a compatibility projection, matching
     `pack.compatibility.yaml.delivery_bundles` rows with pack-local manifest,
     participant path, operator path, and validation references.
@@ -446,7 +446,7 @@ explicitly smaller, create or track issues for these slices:
 - [ ] Scenario contract and pack skeleton.
 - [ ] Topology, assets, and reference-triangle design.
 - [ ] Hidden path, affordance ledger, objective oracle, and validation model.
-- [ ] Flag, challenge, and reference CTFd layer, when the scenario has scoring.
+- [ ] Flag, challenge, and reference CTFd layer, when the scenario has flags.
 - [ ] Delivery profile bundles, when the scenario has multiple audiences.
 - [ ] Golden build implementation in the declared live infrastructure.
 - [ ] Automated live rehearsal for the golden build.

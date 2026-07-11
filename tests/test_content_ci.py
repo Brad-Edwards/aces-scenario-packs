@@ -227,6 +227,164 @@ class SharedOracleModelGateTest(unittest.TestCase):
             CI.SCEN = orig_scen
 
 
+class AntiExtensionGuardTest(unittest.TestCase):
+    """The zero-extensions guard (issue #83 / ADR 0009).
+
+    The guard is structural: a removed ACES-semantic concept is forbidden as a
+    *declared* schema property or manifest key and as an ``sdl/`` semantic ledger,
+    never as a word in prose. These tests lock that the shipped format is clean
+    and that a reintroduced layer or ledger is caught wherever it can slip in.
+    """
+
+    def test_shipped_format_has_no_extension_layers(self):
+        # The real bundled schema, template, and example must pass the guard.
+        failures: list[str] = []
+        CI.check_anti_extension(failures)
+        self.assertEqual(failures, [], "\n".join(failures))
+
+    def test_forbidden_manifest_keys_detects_removed_layers(self):
+        manifest = {"schema_version": 1, "pack": {}, "scoring": {}, "telemetry": {}}
+        self.assertEqual(
+            CI._forbidden_manifest_keys(manifest), ["scoring", "telemetry"])
+
+    def test_forbidden_manifest_keys_clean_manifest(self):
+        self.assertEqual(
+            CI._forbidden_manifest_keys({"pack": {}, "assets": [], "validation": {}}), [])
+
+    def test_schema_reintroducing_layer_is_flagged(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        with open(os.path.join(tmp, CI.COMPATIBILITY_SCHEMA_FILE), "w",
+                  encoding="utf-8") as fh:
+            fh.write("type: object\nproperties:\n  telemetry:\n    type: object\n")
+        orig = CI._SCHEMAS_DIR
+        CI._SCHEMAS_DIR = tmp
+        try:
+            failures: list[str] = []
+            CI._check_schema_no_extension_layers(failures)
+        finally:
+            CI._SCHEMAS_DIR = orig
+        blob = "\n".join(failures)
+        self.assertIn("ANTI-EXTENSION", blob)
+        self.assertIn("telemetry", blob)
+
+    def test_pack_manifest_reintroducing_layer_is_flagged(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        scen = os.path.join(tmp, "scenarios")
+        pack = os.path.join(scen, "example-pack")
+        os.makedirs(pack)
+        with open(os.path.join(pack, "pack.yaml"), "w", encoding="utf-8") as fh:
+            fh.write("name: example-pack\ncompatibility_manifest: pack.compatibility.yaml\n")
+        with open(os.path.join(pack, "pack.compatibility.yaml"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("schema_version: 1\nscoring:\n  status: not_shipped\n")
+        orig_scen, orig_repo = CI.SCEN, CI._REPO
+        CI.SCEN, CI._REPO = scen, tmp
+        try:
+            failures: list[str] = []
+            CI._check_pack_no_extension_layers("example-pack", failures)
+        finally:
+            CI.SCEN, CI._REPO = orig_scen, orig_repo
+        blob = "\n".join(failures)
+        self.assertIn("ANTI-EXTENSION", blob)
+        self.assertIn("scoring", blob)
+
+    def test_pack_sdl_semantic_ledger_is_flagged(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        scen = os.path.join(tmp, "scenarios")
+        sdl = os.path.join(scen, "example-pack", "sdl")
+        os.makedirs(sdl)
+        open(os.path.join(sdl, "scoring.yaml"), "w").close()
+        orig_scen, orig_repo = CI.SCEN, CI._REPO
+        CI.SCEN, CI._REPO = scen, tmp
+        try:
+            failures: list[str] = []
+            CI._check_pack_no_extension_layers("example-pack", failures)
+        finally:
+            CI.SCEN, CI._REPO = orig_scen, orig_repo
+        self.assertIn("sdl/scoring.yaml", "\n".join(failures))
+
+    def test_clean_pack_passes(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        scen = os.path.join(tmp, "scenarios")
+        sdl = os.path.join(scen, "example-pack", "sdl")
+        os.makedirs(sdl)
+        # A legitimate ACES SDL document is not a forbidden ledger.
+        open(os.path.join(sdl, "example.sdl.yaml"), "w").close()
+        with open(os.path.join(scen, "example-pack", "pack.yaml"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("name: example-pack\n")
+        orig_scen, orig_repo = CI.SCEN, CI._REPO
+        CI.SCEN, CI._REPO = scen, tmp
+        try:
+            failures: list[str] = []
+            CI._check_pack_no_extension_layers("example-pack", failures)
+        finally:
+            CI.SCEN, CI._REPO = orig_scen, orig_repo
+        self.assertEqual(failures, [])
+
+
+class AntiExtensionAggregatorTest(unittest.TestCase):
+    """Drive the public ``check_anti_extension`` aggregator — the one ``main()``
+    actually calls — not just its leaf helpers.
+
+    ``AntiExtensionGuardTest`` exercises the leaf checks directly, so the
+    aggregator's own wiring (the per-pack loop and the packaged template/example
+    branch) would be untested through the public entry point: against the real
+    repo there is no ``scenarios/`` tree, so the loop body never runs and the
+    packaged-manifest failure branch never fires. A refactor that dropped either
+    call from ``check_anti_extension`` would keep the suite green while the guard
+    silently stopped enforcing the charter in production (issue #83 / ADR 0009).
+    This class closes that gap, mirroring ``ProvenanceWrapperGateTest``.
+    """
+
+    def test_aggregator_flags_pack_reintroducing_layer(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        scen = os.path.join(tmp, "scenarios")
+        pack = os.path.join(scen, "example-pack")
+        os.makedirs(pack)
+        with open(os.path.join(pack, "pack.yaml"), "w", encoding="utf-8") as fh:
+            fh.write("name: example-pack\ncompatibility_manifest: pack.compatibility.yaml\n")
+        with open(os.path.join(pack, "pack.compatibility.yaml"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("schema_version: 1\nscoring:\n  status: not_shipped\n")
+        orig_scen, orig_repo = CI.SCEN, CI._REPO
+        CI.SCEN, CI._REPO = scen, tmp
+        try:
+            failures: list[str] = []
+            CI.check_anti_extension(failures)
+        finally:
+            CI.SCEN, CI._REPO = orig_scen, orig_repo
+        self.assertTrue(
+            any("ANTI-EXTENSION" in f and "scoring" in f for f in failures),
+            "\n".join(failures))
+
+    def test_aggregator_flags_packaged_template_manifest(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        # A corrupted copy of the packaged template manifest, reached only through
+        # the aggregator's packaged-manifest branch (not the leaf helper).
+        with open(os.path.join(tmp, CI.COMPATIBILITY_MANIFEST_FILE), "w",
+                  encoding="utf-8") as fh:
+            fh.write("schema_version: 1\ntelemetry:\n  status: not_shipped\n")
+        empty_scen = os.path.join(tmp, "scenarios")
+        os.makedirs(empty_scen)
+        orig_tmpl, orig_scen, orig_repo = CI._TEMPLATE_DIR, CI.SCEN, CI._REPO
+        CI._TEMPLATE_DIR, CI.SCEN, CI._REPO = tmp, empty_scen, tmp
+        try:
+            failures: list[str] = []
+            CI.check_anti_extension(failures)
+        finally:
+            CI._TEMPLATE_DIR, CI.SCEN, CI._REPO = orig_tmpl, orig_scen, orig_repo
+        blob = "\n".join(failures)
+        self.assertTrue(any("ANTI-EXTENSION" in f for f in failures), blob)
+        self.assertIn("telemetry", blob)
+
+
 class PackDiscoveryTest(unittest.TestCase):
     def _with_temp_git_repo(self):
         tmp = tempfile.mkdtemp()
@@ -406,28 +564,6 @@ class CompatibilityManifestGateTest(unittest.TestCase):
             "delivery_bundles: []",
             "platform_features: []",
             "assets: []",
-            "scoring:",
-            "  status: not_shipped",
-            "  mode: none",
-            "  references: []",
-            "validation_oracle:",
-            "  status: not_shipped",
-            "  mode: none",
-            "  references: []",
-            "telemetry:",
-            "  status: not_shipped",
-            "  mode: none",
-            "  references: []",
-            "lifecycle:",
-            "  reset:",
-            "    status: not_shipped",
-            "    references: []",
-            "  rebuild:",
-            "    status: not_shipped",
-            "    references: []",
-            "  teardown:",
-            "    status: not_shipped",
-            "    references: []",
             "operator_surfaces: []",
             "validation:",
             "  commands:",

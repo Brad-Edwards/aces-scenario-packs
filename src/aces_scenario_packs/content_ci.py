@@ -49,7 +49,7 @@ import sys
 
 import yaml
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 # Canonical contract resources ship inside this installed package (schemas,
 # template, oracle fixtures + model). They are resolved relative to the package,
@@ -246,7 +246,7 @@ def check_tests(failures: list[str]) -> None:
                 print(f"  [ok] {tag} ({r.stderr.strip().splitlines()[-1] if r.stderr else 'ok'})")
 
 
-def _load_aces_sdl():
+def _load_aces_sdl() -> tuple[Callable[..., object], type[BaseException]]:
     """Return ``(parse_sdl_file, SDLError)`` from ACES, or raise ``ImportError``.
 
     ``aces-sdl`` is a hard, exactly-pinned dependency (ADR 0011): SDL is
@@ -317,9 +317,7 @@ def _iter_placement_hosts(pack: str, failures: list[str]) -> Iterator[str]:
     if not os.path.isfile(placement_path):
         return
     doc = _load_yaml(placement_path, failures, "placement map")
-    if not isinstance(doc, dict):
-        return
-    flags = doc.get("flags")
+    flags = doc.get("flags") if isinstance(doc, dict) else None
     if not isinstance(flags, list):
         return
     for row in flags:
@@ -327,8 +325,8 @@ def _iter_placement_hosts(pack: str, failures: list[str]) -> Iterator[str]:
             yield row["host"]
 
 
-def _check_pack_sdl(pack: str, parse_sdl_file, sdl_error: type[BaseException],
-                    failures: list[str]) -> None:
+def _check_pack_sdl(pack: str, parse_sdl_file: Callable[..., object],
+                    sdl_error: type[BaseException], failures: list[str]) -> None:
     """Validate one pack's SDL start state through ACES and join placement hosts."""
     from pathlib import Path
 
@@ -349,10 +347,9 @@ def _check_pack_sdl(pack: str, parse_sdl_file, sdl_error: type[BaseException],
             continue
         try:
             scenario = parse_sdl_file(Path(doc))
-        except sdl_error as exc:  # ACES-owned parse/validation failure
-            failures.append(f"SDL INVALID: {rel}: {_bounded_sdl_error(exc)}")
-            continue
-        except (OSError, FileNotFoundError) as exc:
+        # sdl_error is ACES's own parse/validation failure; OSError covers an
+        # unreadable/missing SDL file (FileNotFoundError is an OSError subclass).
+        except (sdl_error, OSError) as exc:
             failures.append(f"SDL INVALID: {rel}: {_bounded_sdl_error(exc)}")
             continue
         node_ids |= _sdl_node_ids(scenario)

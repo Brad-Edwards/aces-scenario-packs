@@ -31,6 +31,29 @@ the layout contract bundled in the package (`contract/pack-layout.md`):
 - `profiles/` for delivery and audience bundles when the scenario has them.
 - `docs/golden-readiness-checklist.md` for milestone planning and final review.
 
+## SDL Validation (through ACES)
+
+`sdl/` holds the scenario start state as one or more `<name>.sdl.yaml` documents
+authored in [ACES SDL][aces-sdl]. `aces-pack-validate` parses **every** direct
+`sdl/*.sdl.yaml` through ACES (`aces_sdl.parse_sdl_file`, with full semantic
+validation) and fails on a pack that ships no start-state document or any
+document ACES rejects. SDL is validated *through ACES* — no SDL schema is
+restated here, and the local JSON-Schema subset validator never touches SDL.
+
+`aces-sdl` is therefore a hard, exactly-pinned runtime dependency
+(`aces-sdl==0.19.1`) rather than an optional one: the gate is fail-closed, so an
+optional coupling that skipped SDL when ACES was absent would leave every pack's
+most important content unchecked. The exact pin is deliberate while ACES SDL
+contracts are `stability: draft`; advancing it requires compatibility tests. This
+raises the package's Python floor to match ACES (`>=3.11`). See
+[ADR 0011](decisions/adrs/0011-require-pinned-aces-sdl-validation.md).
+
+The validator also enforces the one canonical pack→SDL link: each
+`flags/placement.yaml` `host` must resolve to a real `Scenario.nodes` id in at
+least one validated SDL document in the pack (the union across a pack's full and
+reduced start-state variants). Only `flags[].host` is checked; no SDL reference
+is inferred from prose, filenames, or arbitrary keys.
+
 ## Status Meanings
 
 - `draft`: design/source only; the full live scenario is not stood up.

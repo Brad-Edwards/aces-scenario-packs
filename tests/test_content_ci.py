@@ -987,5 +987,145 @@ class ProvenanceRealRepoGateTest(unittest.TestCase):
         self.assertEqual(failures, [], "\n".join(failures))
 
 
+_VALID_SDL = "\n".join([
+    "name: example-pack",
+    "nodes:",
+    "  boreas-mail:",
+    "    type: vm",
+    "",
+])
+# `nodes.<id>` with no `type` is rejected by ACES semantic validation — a
+# genuinely invalid SDL document, validated *through ACES* (no local schema).
+_INVALID_SDL = "\n".join([
+    "name: example-pack",
+    "nodes:",
+    "  boreas-mail: {}",
+    "",
+])
+
+
+class SdlValidationGateTest(unittest.TestCase):
+    """SDL-through-ACES gate + flag-placement cross-check (issue #84, ADR 0011).
+
+    SDL is validated through the real ACES parser (a hard, pinned dependency),
+    never a local schema. These drive the gate over temp catalogs using the same
+    ``CI.SCEN``/``CI._REPO`` repointing pattern as the other gate-infra tests.
+    """
+
+    def _pack(self, *, sdl: dict[str, str] | None, placement: str | None = None):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        scen = os.path.join(tmp, "scenarios")
+        pack = os.path.join(scen, "example-pack")
+        sdl_dir = os.path.join(pack, "sdl")
+        os.makedirs(sdl_dir, exist_ok=True)
+        for name, body in (sdl or {}).items():
+            with open(os.path.join(sdl_dir, name), "w", encoding="utf-8") as fh:
+                fh.write(body)
+        if placement is not None:
+            flags = os.path.join(pack, "flags")
+            os.makedirs(flags, exist_ok=True)
+            with open(os.path.join(flags, "placement.yaml"), "w",
+                      encoding="utf-8") as fh:
+                fh.write(placement)
+        return tmp, scen
+
+    def _run(self, tmp, scen):
+        orig_scen, orig_repo = CI.SCEN, CI._REPO
+        CI.SCEN, CI._REPO = scen, tmp
+        try:
+            failures: list[str] = []
+            CI.check_sdl(failures)
+        finally:
+            CI.SCEN, CI._REPO = orig_scen, orig_repo
+        return failures
+
+    def test_valid_sdl_with_resolved_placement_is_clean(self):
+        placement = "flags:\n  - flag_id: mail\n    host: boreas-mail\n"
+        tmp, scen = self._pack(sdl={"example.sdl.yaml": _VALID_SDL},
+                               placement=placement)
+        self.assertEqual(self._run(tmp, scen), [])
+
+    def test_invalid_sdl_is_flagged(self):
+        tmp, scen = self._pack(sdl={"example.sdl.yaml": _INVALID_SDL})
+        blob = "\n".join(self._run(tmp, scen))
+        self.assertIn("SDL INVALID", blob)
+        self.assertIn("example.sdl.yaml", blob)
+
+    def test_invalid_sdl_diagnostic_is_bounded_and_pathless(self):
+        # The bounded diagnostic must not leak the absolute temp path or dump an
+        # unbounded payload (ADR 0011).
+        tmp, scen = self._pack(sdl={"example.sdl.yaml": _INVALID_SDL})
+        failures = self._run(tmp, scen)
+        [invalid] = [f for f in failures if f.startswith("SDL INVALID")]
+        self.assertNotIn(tmp, invalid)
+        self.assertLess(len(invalid), 300)
+
+    def test_missing_sdl_document_is_flagged(self):
+        tmp, scen = self._pack(sdl=None)  # sdl/ exists but ships no *.sdl.yaml
+        blob = "\n".join(self._run(tmp, scen))
+        self.assertIn("SDL MISSING", blob)
+
+    def test_flag_host_absent_from_sdl_is_flagged(self):
+        placement = "flags:\n  - flag_id: mail\n    host: ghost-host\n"
+        tmp, scen = self._pack(sdl={"example.sdl.yaml": _VALID_SDL},
+                               placement=placement)
+        blob = "\n".join(self._run(tmp, scen))
+        self.assertIn("FLAG PLACEMENT INVALID", blob)
+        self.assertIn("ghost-host", blob)
+
+    def test_host_resolves_against_union_of_variants(self):
+        # A host present in only one validated variant resolves (union rule).
+        variant = "\n".join([
+            "name: example-pack", "nodes:", "  brain-controller:",
+            "    type: vm", ""])
+        placement = "flags:\n  - flag_id: mail\n    host: brain-controller\n"
+        tmp, scen = self._pack(
+            sdl={"example.sdl.yaml": _VALID_SDL, "example-demo.sdl.yaml": variant},
+            placement=placement)
+        self.assertEqual(self._run(tmp, scen), [])
+
+    def test_empty_placement_is_clean(self):
+        tmp, scen = self._pack(sdl={"example.sdl.yaml": _VALID_SDL},
+                               placement="flags: []\n")
+        self.assertEqual(self._run(tmp, scen), [])
+
+    def test_node_id_extraction_reads_scenario_nodes(self):
+        class _FakeScenario:
+            nodes = {"a": object(), "b": object()}
+        self.assertEqual(CI._sdl_node_ids(_FakeScenario()), {"a", "b"})
+        self.assertEqual(CI._sdl_node_ids(object()), set())
+
+    def test_symlinked_sdl_escaping_pack_root_is_rejected(self):
+        # A symlinked sdl/*.sdl.yaml whose real target lives outside the pack
+        # root must be rejected by the real-path guard, without ACES ever
+        # following the link into a parse (ADR 0011 containment discipline).
+        tmp, scen = self._pack(sdl={"example.sdl.yaml": _VALID_SDL})
+        outside = os.path.join(tmp, "outside.sdl.yaml")
+        with open(outside, "w", encoding="utf-8") as fh:
+            fh.write(_VALID_SDL)  # valid, so only the guard can produce a failure
+        link = os.path.join(scen, "example-pack", "sdl", "escape.sdl.yaml")
+        os.symlink(outside, link)
+
+        blob = "\n".join(self._run(tmp, scen))
+        self.assertIn("SDL INVALID", blob)
+        self.assertIn("path escapes pack root", blob)
+
+    def test_missing_aces_sdl_dependency_fails_closed(self):
+        # A broken environment where the pinned dep is unimportable is a
+        # fail-closed gate failure, never a silent skip (ADR 0011).
+        def _boom():
+            raise ImportError("no module named 'aces_sdl'")
+
+        orig = CI._load_aces_sdl
+        CI._load_aces_sdl = _boom
+        try:
+            failures: list[str] = []
+            CI.check_sdl(failures)
+        finally:
+            CI._load_aces_sdl = orig
+        self.assertIn("SDL VALIDATION UNAVAILABLE", "\n".join(failures))
+
+
 if __name__ == "__main__":
     unittest.main()

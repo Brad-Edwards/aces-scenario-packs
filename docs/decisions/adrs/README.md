@@ -16,3 +16,4 @@ once accepted; a later ADR supersedes an earlier one rather than editing it.
 | [0008](0008-adopt-release-please.md) | Adopt release-please (reusable blueprint) | Accepted |
 | [0009](0009-scenario-packs-subordinate-to-aces.md) | Scenario packs are strictly subordinate to ACES (zero extensions) | Accepted |
 | [0010](0010-consume-aces-reusable-asset-trust-policy.md) | Consume ACES reusable-asset trust policy for pack provenance | Accepted |
+| [0011](0011-require-pinned-aces-sdl-validation.md) | Require pinned ACES SDL validation for scenario packs | Accepted |

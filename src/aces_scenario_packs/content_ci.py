@@ -28,8 +28,14 @@ so every present and future pack benefits:
      no ``scoring`` / ``validation_oracle`` / ``telemetry`` / ``lifecycle``
      manifest layer and no ``sdl/`` semantic ledger reintroduces an ACES/runtime
      concept (ADR 0009, issue #83).
+  8. **SDL through ACES** — every pack's ``sdl/*.sdl.yaml`` start state parses
+     and validates through ACES (``aces_sdl.parse_sdl_file``), and every
+     ``flags/placement.yaml`` host resolves to a real ``Scenario.nodes`` id.
+     SDL is validated *through ACES*, with no SDL schema restated here; the gate
+     is fail-closed on a missing/invalid document (ADR 0011, issue #84).
 
-Stdlib + PyYAML only. Run locally exactly as CI does:
+Stdlib + PyYAML, plus ACES (``aces-sdl``, exactly pinned per ADR 0011) for SDL
+validation. Run locally exactly as CI does:
 
     aces-pack-validate --repo .
 """
@@ -43,7 +49,7 @@ import sys
 
 import yaml
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 # Canonical contract resources ship inside this installed package (schemas,
 # template, oracle fixtures + model). They are resolved relative to the package,
@@ -188,6 +194,13 @@ def _packs() -> list[str]:
 # sdl ledgers (#21–#24) and the delivery-profile bundles (#50) both ship one.
 VALIDATOR_DIRS = ("sdl", "profiles")
 
+# SDL-through-ACES gate (#84, ADR 0011). Every pack's start state lives under
+# `sdl/` as one or more `*.sdl.yaml` documents authored in ACES SDL; the
+# placement map's `host` join points at a node in that start state.
+SDL_DIR = "sdl"
+SDL_DOC_SUFFIX = ".sdl.yaml"
+PLACEMENT_REL = os.path.join("flags", "placement.yaml")
+
 
 def _run_one_validator(vdir: str, fname: str, tag: str, failures: list[str]) -> None:
     """Run one validator."""
@@ -231,6 +244,147 @@ def check_tests(failures: list[str]) -> None:
                 failures.append(f"tests FAILED: {tag}\n{r.stderr[-1200:]}")
             else:
                 print(f"  [ok] {tag} ({r.stderr.strip().splitlines()[-1] if r.stderr else 'ok'})")
+
+
+def _load_aces_sdl() -> tuple[Callable[..., object], type[BaseException]]:
+    """Return ``(parse_sdl_file, SDLError)`` from ACES, or raise ``ImportError``.
+
+    ``aces-sdl`` is a hard, exactly-pinned dependency (ADR 0011): SDL is
+    validated *through ACES*, never a local restatement. The import is isolated
+    (and lazy) so a broken environment where the pinned dep is missing surfaces
+    as a fail-closed gate failure in :func:`check_sdl` rather than crashing the
+    import of the other, ACES-independent gates.
+    """
+    from aces_sdl import SDLError, parse_sdl_file
+    return parse_sdl_file, SDLError
+
+
+def _sdl_docs(pack: str) -> list[str]:
+    """Direct ``sdl/*.sdl.yaml`` documents for a pack (sorted, non-recursive)."""
+    sdl_dir = os.path.join(SCEN, pack, SDL_DIR)
+    if not os.path.isdir(sdl_dir):
+        return []
+    return [
+        os.path.join(sdl_dir, name)
+        for name in sorted(os.listdir(sdl_dir))
+        if name.endswith(SDL_DOC_SUFFIX)
+        and os.path.isfile(os.path.join(sdl_dir, name))
+    ]
+
+
+def _realpath_inside_pack(pack_root: str, path: str) -> bool:
+    """True when ``path``'s real location is contained in ``pack_root``.
+
+    Stronger than :func:`_path_inside_pack`: it resolves symlinks so a symlinked
+    SDL document cannot point ACES at a file outside the pack root.
+    """
+    root = os.path.realpath(pack_root)
+    target = os.path.realpath(path)
+    return os.path.commonpath([root, target]) == root
+
+
+def _sdl_node_ids(scenario: object) -> set[str]:
+    """Node ids declared by a parsed ACES ``Scenario`` (the ``nodes.<id>`` keys).
+
+    Reads the ACES-owned ``Scenario.nodes`` mapping directly; it never reloads or
+    reinterprets the SDL. Isolated so the placement cross-check is unit-testable
+    against a lightweight stand-in scenario.
+    """
+    return set(getattr(scenario, "nodes", {}) or {})
+
+
+def _bounded_sdl_error(exc: BaseException) -> str:
+    """A bounded, path-stripped one-line rendering of an ACES SDL error.
+
+    ACES prepends the absolute file path and pydantic can echo input values on
+    later lines; per ADR 0011 the CI-facing diagnostic must not dump raw SDL,
+    flag values, or other source payloads. Keep only the first line, drop the
+    leading ``<abs path>: `` ACES adds, and cap the length.
+    """
+    first_line = str(exc).splitlines()[0] if str(exc) else exc.__class__.__name__
+    detail = first_line.split(": ", 1)[-1] if ": " in first_line else first_line
+    return f"{exc.__class__.__name__}: {detail[:200]}"
+
+
+def _iter_placement_hosts(pack: str, failures: list[str]) -> Iterator[str]:
+    """Yield each declared ``flags/placement.yaml.flags[].host`` for a pack.
+
+    Only the canonical structured reference (``flags[].host``) is read; no host
+    is inferred from prose, filenames, or arbitrary keys (ADR 0011). A malformed
+    placement document is reported and yields nothing.
+    """
+    placement_path = os.path.join(SCEN, pack, PLACEMENT_REL)
+    if not os.path.isfile(placement_path):
+        return
+    doc = _load_yaml(placement_path, failures, "placement map")
+    flags = doc.get("flags") if isinstance(doc, dict) else None
+    if not isinstance(flags, list):
+        return
+    for row in flags:
+        if isinstance(row, dict) and isinstance(row.get("host"), str):
+            yield row["host"]
+
+
+def _check_pack_sdl(pack: str, parse_sdl_file: Callable[..., object],
+                    sdl_error: type[BaseException], failures: list[str]) -> None:
+    """Validate one pack's SDL start state through ACES and join placement hosts."""
+    from pathlib import Path
+
+    pack_root = os.path.join(SCEN, pack)
+    docs = _sdl_docs(pack)
+    if not docs:
+        failures.append(
+            f"SDL MISSING: scenarios/{pack}/{SDL_DIR} has no *{SDL_DOC_SUFFIX} "
+            "start-state document (every pack requires an SDL start state)")
+        return
+
+    node_ids: set[str] = set()
+    parsed_any = False
+    for doc in docs:
+        rel = os.path.relpath(doc, _REPO)
+        if not _realpath_inside_pack(pack_root, doc):
+            failures.append(f"SDL INVALID: {rel}: path escapes pack root")
+            continue
+        try:
+            scenario = parse_sdl_file(Path(doc))
+        # sdl_error is ACES's own parse/validation failure; OSError covers an
+        # unreadable/missing SDL file (FileNotFoundError is an OSError subclass).
+        except (sdl_error, OSError) as exc:
+            failures.append(f"SDL INVALID: {rel}: {_bounded_sdl_error(exc)}")
+            continue
+        node_ids |= _sdl_node_ids(scenario)
+        parsed_any = True
+        print(f"  [ok] {os.path.relpath(doc, SCEN)}")
+
+    # Only join placement hosts when at least one variant validated; otherwise
+    # the SDL failure above is the actionable one and the node set is unknown.
+    if not parsed_any:
+        return
+    for host in _iter_placement_hosts(pack, failures):
+        if host not in node_ids:
+            failures.append(
+                f"FLAG PLACEMENT INVALID: scenarios/{pack}/{PLACEMENT_REL}: "
+                f"host {host!r} does not resolve to an SDL start-state node")
+
+
+def check_sdl(failures: list[str]) -> None:
+    """Validate every pack's ``sdl/`` through ACES and cross-check flag placement.
+
+    ADR 0011: SDL is validated *through ACES* (``parse_sdl_file`` with full
+    semantic validation), with no SDL schema restated here. The gate is
+    fail-closed — a pack with no start-state document, a document ACES rejects,
+    a placement ``host`` that resolves to no node, or a missing pinned ``aces-sdl``
+    dependency all fail.
+    """
+    try:
+        parse_sdl_file, sdl_error = _load_aces_sdl()
+    except ImportError as exc:
+        failures.append(
+            "SDL VALIDATION UNAVAILABLE: aces-sdl (pinned dependency, ADR 0011) "
+            f"is not importable: {exc}")
+        return
+    for pack in _packs():
+        _check_pack_sdl(pack, parse_sdl_file, sdl_error, failures)
 
 
 def _iter_text_files(root: str) -> Iterator[str]:
@@ -1160,6 +1314,8 @@ def main(argv: list[str] | None = None) -> int:
     check_validators(failures)
     print("== test suites ==")
     check_tests(failures)
+    print("== sdl (ACES) ==")
+    check_sdl(failures)
     print("== visibility scan ==")
     check_visibility(failures)
     print("== pack drift scan ==")

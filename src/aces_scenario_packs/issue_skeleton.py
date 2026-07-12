@@ -196,7 +196,7 @@ def oracle_body(plan: PackPlan) -> str:
     - Accepted alternates, prerequisites, failure states, negative gates, and objective success states.
     - Affordance ledger mapping clues, credentials, tools, planted artifacts, privileges, routes, services, and data to
       concrete `sdl/` and `assets/` references.
-    - Pack-local oracle/scoring/telemetry ledgers and validators.
+    - Pack-local oracle ledgers and validators.
     - Explicit separation between hidden oracle material and participant-facing content.
 
     ## Acceptance Criteria
@@ -214,7 +214,7 @@ def flag_body(plan: PackPlan) -> str:
     """Flag body."""
     return clean(f"""\
     ## Goal
-    Add the all-or-nothing flag, challenge, and reference CTFd layer for `{plan.pack_id}` when the scenario has scoring.
+    Add the all-or-nothing flag, challenge, and reference CTFd layer for `{plan.pack_id}` when the scenario has flags.
 
     {pack_block(plan)}
     {COMMON_ANCHORS}
@@ -275,7 +275,7 @@ def build_body(plan: PackPlan) -> str:
       objective state created from committed pack source.
     - Participant entry surface provisioned by the build.
     - Reset, rebuild, cleanup, teardown, and operator diagnostics.
-    - `pack.compatibility.yaml` runtime profile, lifecycle, platform feature, validation, and artifact-boundary
+    - `pack.compatibility.yaml` runtime profile, platform feature, validation, and artifact-boundary
       references updated to point at actual build surfaces.
 
     ## Acceptance Criteria
@@ -353,8 +353,8 @@ def final_body(plan: PackPlan) -> str:
     {COMMON_ANCHORS}
     ## Deliverables
     - Update `pack.yaml` status and `contents` only to match proven reality.
-    - Update `pack.compatibility.yaml` runtime profiles, delivery bundles, artifact boundaries, scoring/oracle/telemetry
-      references, lifecycle hooks, operator surfaces, and validation gates.
+    - Update `pack.compatibility.yaml` runtime profiles, delivery bundles, artifact boundaries, operator surfaces,
+      and validation gates.
     - Reconcile README, concepts, attack path, lineage, walkthroughs, golden-readiness checklist, provenance review
       gates, and evidence reports.
     - Remove stale TODOs, old emulation-plan-only language, misleading local-only claims, and references to superseded

@@ -8,7 +8,10 @@ name = "aces-scenario-packs"
 version = "0.1.0"
 description = "ACES scenario-pack definition, schemas, template, and authoring/validation tooling."
 readme = "README.md"
-requires-python = ">=3.10"
+# Floor follows the pinned aces-sdl runtime dependency, which requires >=3.11
+# (ADR 0011). SDL validation flows entirely through ACES, so this package tracks
+# the ACES Python floor rather than restating one.
+requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Brad Edwards" }]
 keywords = ["aces", "scenario-pack", "cyber-range", "security"]
@@ -17,7 +20,12 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Topic :: Security",
 ]
-dependencies = ["PyYAML>=6"]
+# aces-sdl is a hard, exactly-pinned dependency (ADR 0011): SDL is validated
+# *through ACES* (aces_sdl.parse_sdl_file), never a local restatement, and the
+# gate is fail-closed, so ACES cannot be optional. The exact pin is deliberate
+# while ACES SDL contracts are `stability: draft`; advancing it requires
+# compatibility tests against this package's validator and template.
+dependencies = ["PyYAML>=6", "aces-sdl==0.19.1"]
 
 [project.urls]
 Homepage = "https://github.com/Brad-Edwards/aces-scenario-packs"

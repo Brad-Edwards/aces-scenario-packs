@@ -5,6 +5,12 @@
 # source of truth. Schema: ../../provenance.schema.yaml. Worked example:
 # provenance-ledger.example.yaml.
 #
+# ACES is the authority for pack TRUST. A pack is a `reusable_scenario` asset in
+# the ACES reusable-asset-trust-policy/v1 (ACES ADR-071); ACES owns integrity/
+# authenticity/provenance-lock/governance-source/checksum. This ledger is scoped
+# to pack-domain facts ACES does not define (below) and re-defines none of them
+# (ADR 0009/ADR 0010).
+#
 # Distribution classes (open | redistributable | internal-only | commercial-only
 # | generated | customer-specific) describe publishing/redistribution rights and
 # are SEPARATE from pack.compatibility.yaml's runtime-visibility export values.

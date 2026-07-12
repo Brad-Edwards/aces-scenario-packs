@@ -227,6 +227,164 @@ class SharedOracleModelGateTest(unittest.TestCase):
             CI.SCEN = orig_scen
 
 
+class AntiExtensionGuardTest(unittest.TestCase):
+    """The zero-extensions guard (issue #83 / ADR 0009).
+
+    The guard is structural: a removed ACES-semantic concept is forbidden as a
+    *declared* schema property or manifest key and as an ``sdl/`` semantic ledger,
+    never as a word in prose. These tests lock that the shipped format is clean
+    and that a reintroduced layer or ledger is caught wherever it can slip in.
+    """
+
+    def test_shipped_format_has_no_extension_layers(self):
+        # The real bundled schema, template, and example must pass the guard.
+        failures: list[str] = []
+        CI.check_anti_extension(failures)
+        self.assertEqual(failures, [], "\n".join(failures))
+
+    def test_forbidden_manifest_keys_detects_removed_layers(self):
+        manifest = {"schema_version": 1, "pack": {}, "scoring": {}, "telemetry": {}}
+        self.assertEqual(
+            CI._forbidden_manifest_keys(manifest), ["scoring", "telemetry"])
+
+    def test_forbidden_manifest_keys_clean_manifest(self):
+        self.assertEqual(
+            CI._forbidden_manifest_keys({"pack": {}, "assets": [], "validation": {}}), [])
+
+    def test_schema_reintroducing_layer_is_flagged(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        with open(os.path.join(tmp, CI.COMPATIBILITY_SCHEMA_FILE), "w",
+                  encoding="utf-8") as fh:
+            fh.write("type: object\nproperties:\n  telemetry:\n    type: object\n")
+        orig = CI._SCHEMAS_DIR
+        CI._SCHEMAS_DIR = tmp
+        try:
+            failures: list[str] = []
+            CI._check_schema_no_extension_layers(failures)
+        finally:
+            CI._SCHEMAS_DIR = orig
+        blob = "\n".join(failures)
+        self.assertIn("ANTI-EXTENSION", blob)
+        self.assertIn("telemetry", blob)
+
+    def test_pack_manifest_reintroducing_layer_is_flagged(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        scen = os.path.join(tmp, "scenarios")
+        pack = os.path.join(scen, "example-pack")
+        os.makedirs(pack)
+        with open(os.path.join(pack, "pack.yaml"), "w", encoding="utf-8") as fh:
+            fh.write("name: example-pack\ncompatibility_manifest: pack.compatibility.yaml\n")
+        with open(os.path.join(pack, "pack.compatibility.yaml"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("schema_version: 1\nscoring:\n  status: not_shipped\n")
+        orig_scen, orig_repo = CI.SCEN, CI._REPO
+        CI.SCEN, CI._REPO = scen, tmp
+        try:
+            failures: list[str] = []
+            CI._check_pack_no_extension_layers("example-pack", failures)
+        finally:
+            CI.SCEN, CI._REPO = orig_scen, orig_repo
+        blob = "\n".join(failures)
+        self.assertIn("ANTI-EXTENSION", blob)
+        self.assertIn("scoring", blob)
+
+    def test_pack_sdl_semantic_ledger_is_flagged(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        scen = os.path.join(tmp, "scenarios")
+        sdl = os.path.join(scen, "example-pack", "sdl")
+        os.makedirs(sdl)
+        open(os.path.join(sdl, "scoring.yaml"), "w").close()
+        orig_scen, orig_repo = CI.SCEN, CI._REPO
+        CI.SCEN, CI._REPO = scen, tmp
+        try:
+            failures: list[str] = []
+            CI._check_pack_no_extension_layers("example-pack", failures)
+        finally:
+            CI.SCEN, CI._REPO = orig_scen, orig_repo
+        self.assertIn("sdl/scoring.yaml", "\n".join(failures))
+
+    def test_clean_pack_passes(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        scen = os.path.join(tmp, "scenarios")
+        sdl = os.path.join(scen, "example-pack", "sdl")
+        os.makedirs(sdl)
+        # A legitimate ACES SDL document is not a forbidden ledger.
+        open(os.path.join(sdl, "example.sdl.yaml"), "w").close()
+        with open(os.path.join(scen, "example-pack", "pack.yaml"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("name: example-pack\n")
+        orig_scen, orig_repo = CI.SCEN, CI._REPO
+        CI.SCEN, CI._REPO = scen, tmp
+        try:
+            failures: list[str] = []
+            CI._check_pack_no_extension_layers("example-pack", failures)
+        finally:
+            CI.SCEN, CI._REPO = orig_scen, orig_repo
+        self.assertEqual(failures, [])
+
+
+class AntiExtensionAggregatorTest(unittest.TestCase):
+    """Drive the public ``check_anti_extension`` aggregator — the one ``main()``
+    actually calls — not just its leaf helpers.
+
+    ``AntiExtensionGuardTest`` exercises the leaf checks directly, so the
+    aggregator's own wiring (the per-pack loop and the packaged template/example
+    branch) would be untested through the public entry point: against the real
+    repo there is no ``scenarios/`` tree, so the loop body never runs and the
+    packaged-manifest failure branch never fires. A refactor that dropped either
+    call from ``check_anti_extension`` would keep the suite green while the guard
+    silently stopped enforcing the charter in production (issue #83 / ADR 0009).
+    This class closes that gap, mirroring ``ProvenanceWrapperGateTest``.
+    """
+
+    def test_aggregator_flags_pack_reintroducing_layer(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        scen = os.path.join(tmp, "scenarios")
+        pack = os.path.join(scen, "example-pack")
+        os.makedirs(pack)
+        with open(os.path.join(pack, "pack.yaml"), "w", encoding="utf-8") as fh:
+            fh.write("name: example-pack\ncompatibility_manifest: pack.compatibility.yaml\n")
+        with open(os.path.join(pack, "pack.compatibility.yaml"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("schema_version: 1\nscoring:\n  status: not_shipped\n")
+        orig_scen, orig_repo = CI.SCEN, CI._REPO
+        CI.SCEN, CI._REPO = scen, tmp
+        try:
+            failures: list[str] = []
+            CI.check_anti_extension(failures)
+        finally:
+            CI.SCEN, CI._REPO = orig_scen, orig_repo
+        self.assertTrue(
+            any("ANTI-EXTENSION" in f and "scoring" in f for f in failures),
+            "\n".join(failures))
+
+    def test_aggregator_flags_packaged_template_manifest(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        # A corrupted copy of the packaged template manifest, reached only through
+        # the aggregator's packaged-manifest branch (not the leaf helper).
+        with open(os.path.join(tmp, CI.COMPATIBILITY_MANIFEST_FILE), "w",
+                  encoding="utf-8") as fh:
+            fh.write("schema_version: 1\ntelemetry:\n  status: not_shipped\n")
+        empty_scen = os.path.join(tmp, "scenarios")
+        os.makedirs(empty_scen)
+        orig_tmpl, orig_scen, orig_repo = CI._TEMPLATE_DIR, CI.SCEN, CI._REPO
+        CI._TEMPLATE_DIR, CI.SCEN, CI._REPO = tmp, empty_scen, tmp
+        try:
+            failures: list[str] = []
+            CI.check_anti_extension(failures)
+        finally:
+            CI._TEMPLATE_DIR, CI.SCEN, CI._REPO = orig_tmpl, orig_scen, orig_repo
+        blob = "\n".join(failures)
+        self.assertTrue(any("ANTI-EXTENSION" in f for f in failures), blob)
+        self.assertIn("telemetry", blob)
+
+
 class PackDiscoveryTest(unittest.TestCase):
     def _with_temp_git_repo(self):
         tmp = tempfile.mkdtemp()
@@ -406,28 +564,6 @@ class CompatibilityManifestGateTest(unittest.TestCase):
             "delivery_bundles: []",
             "platform_features: []",
             "assets: []",
-            "scoring:",
-            "  status: not_shipped",
-            "  mode: none",
-            "  references: []",
-            "validation_oracle:",
-            "  status: not_shipped",
-            "  mode: none",
-            "  references: []",
-            "telemetry:",
-            "  status: not_shipped",
-            "  mode: none",
-            "  references: []",
-            "lifecycle:",
-            "  reset:",
-            "    status: not_shipped",
-            "    references: []",
-            "  rebuild:",
-            "    status: not_shipped",
-            "    references: []",
-            "  teardown:",
-            "    status: not_shipped",
-            "    references: []",
             "operator_surfaces: []",
             "validation:",
             "  commands:",
@@ -849,6 +985,146 @@ class ProvenanceRealRepoGateTest(unittest.TestCase):
         failures: list[str] = []
         CI.check_provenance(failures)
         self.assertEqual(failures, [], "\n".join(failures))
+
+
+_VALID_SDL = "\n".join([
+    "name: example-pack",
+    "nodes:",
+    "  boreas-mail:",
+    "    type: vm",
+    "",
+])
+# `nodes.<id>` with no `type` is rejected by ACES semantic validation — a
+# genuinely invalid SDL document, validated *through ACES* (no local schema).
+_INVALID_SDL = "\n".join([
+    "name: example-pack",
+    "nodes:",
+    "  boreas-mail: {}",
+    "",
+])
+
+
+class SdlValidationGateTest(unittest.TestCase):
+    """SDL-through-ACES gate + flag-placement cross-check (issue #84, ADR 0011).
+
+    SDL is validated through the real ACES parser (a hard, pinned dependency),
+    never a local schema. These drive the gate over temp catalogs using the same
+    ``CI.SCEN``/``CI._REPO`` repointing pattern as the other gate-infra tests.
+    """
+
+    def _pack(self, *, sdl: dict[str, str] | None, placement: str | None = None):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        scen = os.path.join(tmp, "scenarios")
+        pack = os.path.join(scen, "example-pack")
+        sdl_dir = os.path.join(pack, "sdl")
+        os.makedirs(sdl_dir, exist_ok=True)
+        for name, body in (sdl or {}).items():
+            with open(os.path.join(sdl_dir, name), "w", encoding="utf-8") as fh:
+                fh.write(body)
+        if placement is not None:
+            flags = os.path.join(pack, "flags")
+            os.makedirs(flags, exist_ok=True)
+            with open(os.path.join(flags, "placement.yaml"), "w",
+                      encoding="utf-8") as fh:
+                fh.write(placement)
+        return tmp, scen
+
+    def _run(self, tmp, scen):
+        orig_scen, orig_repo = CI.SCEN, CI._REPO
+        CI.SCEN, CI._REPO = scen, tmp
+        try:
+            failures: list[str] = []
+            CI.check_sdl(failures)
+        finally:
+            CI.SCEN, CI._REPO = orig_scen, orig_repo
+        return failures
+
+    def test_valid_sdl_with_resolved_placement_is_clean(self):
+        placement = "flags:\n  - flag_id: mail\n    host: boreas-mail\n"
+        tmp, scen = self._pack(sdl={"example.sdl.yaml": _VALID_SDL},
+                               placement=placement)
+        self.assertEqual(self._run(tmp, scen), [])
+
+    def test_invalid_sdl_is_flagged(self):
+        tmp, scen = self._pack(sdl={"example.sdl.yaml": _INVALID_SDL})
+        blob = "\n".join(self._run(tmp, scen))
+        self.assertIn("SDL INVALID", blob)
+        self.assertIn("example.sdl.yaml", blob)
+
+    def test_invalid_sdl_diagnostic_is_bounded_and_pathless(self):
+        # The bounded diagnostic must not leak the absolute temp path or dump an
+        # unbounded payload (ADR 0011).
+        tmp, scen = self._pack(sdl={"example.sdl.yaml": _INVALID_SDL})
+        failures = self._run(tmp, scen)
+        [invalid] = [f for f in failures if f.startswith("SDL INVALID")]
+        self.assertNotIn(tmp, invalid)
+        self.assertLess(len(invalid), 300)
+
+    def test_missing_sdl_document_is_flagged(self):
+        tmp, scen = self._pack(sdl=None)  # sdl/ exists but ships no *.sdl.yaml
+        blob = "\n".join(self._run(tmp, scen))
+        self.assertIn("SDL MISSING", blob)
+
+    def test_flag_host_absent_from_sdl_is_flagged(self):
+        placement = "flags:\n  - flag_id: mail\n    host: ghost-host\n"
+        tmp, scen = self._pack(sdl={"example.sdl.yaml": _VALID_SDL},
+                               placement=placement)
+        blob = "\n".join(self._run(tmp, scen))
+        self.assertIn("FLAG PLACEMENT INVALID", blob)
+        self.assertIn("ghost-host", blob)
+
+    def test_host_resolves_against_union_of_variants(self):
+        # A host present in only one validated variant resolves (union rule).
+        variant = "\n".join([
+            "name: example-pack", "nodes:", "  brain-controller:",
+            "    type: vm", ""])
+        placement = "flags:\n  - flag_id: mail\n    host: brain-controller\n"
+        tmp, scen = self._pack(
+            sdl={"example.sdl.yaml": _VALID_SDL, "example-demo.sdl.yaml": variant},
+            placement=placement)
+        self.assertEqual(self._run(tmp, scen), [])
+
+    def test_empty_placement_is_clean(self):
+        tmp, scen = self._pack(sdl={"example.sdl.yaml": _VALID_SDL},
+                               placement="flags: []\n")
+        self.assertEqual(self._run(tmp, scen), [])
+
+    def test_node_id_extraction_reads_scenario_nodes(self):
+        class _FakeScenario:
+            nodes = {"a": object(), "b": object()}
+        self.assertEqual(CI._sdl_node_ids(_FakeScenario()), {"a", "b"})
+        self.assertEqual(CI._sdl_node_ids(object()), set())
+
+    def test_symlinked_sdl_escaping_pack_root_is_rejected(self):
+        # A symlinked sdl/*.sdl.yaml whose real target lives outside the pack
+        # root must be rejected by the real-path guard, without ACES ever
+        # following the link into a parse (ADR 0011 containment discipline).
+        tmp, scen = self._pack(sdl={"example.sdl.yaml": _VALID_SDL})
+        outside = os.path.join(tmp, "outside.sdl.yaml")
+        with open(outside, "w", encoding="utf-8") as fh:
+            fh.write(_VALID_SDL)  # valid, so only the guard can produce a failure
+        link = os.path.join(scen, "example-pack", "sdl", "escape.sdl.yaml")
+        os.symlink(outside, link)
+
+        blob = "\n".join(self._run(tmp, scen))
+        self.assertIn("SDL INVALID", blob)
+        self.assertIn("path escapes pack root", blob)
+
+    def test_missing_aces_sdl_dependency_fails_closed(self):
+        # A broken environment where the pinned dep is unimportable is a
+        # fail-closed gate failure, never a silent skip (ADR 0011).
+        def _boom():
+            raise ImportError("no module named 'aces_sdl'")
+
+        orig = CI._load_aces_sdl
+        CI._load_aces_sdl = _boom
+        try:
+            failures: list[str] = []
+            CI.check_sdl(failures)
+        finally:
+            CI._load_aces_sdl = orig
+        self.assertIn("SDL VALIDATION UNAVAILABLE", "\n".join(failures))
 
 
 if __name__ == "__main__":

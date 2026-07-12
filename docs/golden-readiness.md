@@ -33,7 +33,7 @@ Structure new scenario milestones so the final proof is planned:
 - [ ] Scenario contract and pack skeleton.
 - [ ] Topology, assets, and reference-triangle design.
 - [ ] Hidden path, affordance ledger, objective oracle, and validation model.
-- [ ] Flag, challenge, and reference CTFd layer, when the scenario has scoring.
+- [ ] Flag, challenge, and reference CTFd layer, when the scenario has flags.
 - [ ] Delivery profile bundles, when the scenario has multiple audiences.
 - [ ] Golden build implementation in the declared live infrastructure.
 - [ ] Automated live rehearsal for the golden build.

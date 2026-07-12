@@ -36,12 +36,13 @@ sonarcloud:
 architecture:
   vocabulary:
     patterns:
-      - name: Companion contract repository
-        applies_to: scenario-pack definition and authoring tooling
+      - name: ACES-subordinate pack tooling
+        applies_to: scenario-pack layout and authoring/validation/release tooling
         example_path: docs/scenario-packs.md
     boundary_contract:
-      description: ACES core owns SDL semantics; this repository owns the scenario-pack definition, schemas, template, and authoring/validation tooling. It does not host actual scenario packs.
+      description: This repository is subordinate to ACES core (aces-sdl). ACES owns all scenario semantics (the SDL and its objectives, conditions, evidence, and participant/attacker behaviour); this repository owns only the scenario-pack layout and the authoring/validation/release tooling, and defines zero extensions to ACES semantics. It does not host actual scenario packs. See ADR 0009.
     binding_adrs: []
     anti_recommendations:
-      - Do not host actual scenario packs here; this repo is the definition and tooling only.
+      - Do not host actual scenario packs here; this repo is the layout and tooling only.
+      - Do not define or extend ACES semantics here (SDL, objectives, conditions, evidence, scoring, telemetry, oracle/validation models); consume them from ACES. See ADR 0009.
       - Do not encode downstream catalog vocabulary into canonical pack terminology.

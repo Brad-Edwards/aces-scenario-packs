@@ -2,8 +2,11 @@
 
 The canonical, shared home for the ACES scenario-pack **definition**, schemas,
 template, and authoring tools, published as the installable `aces-scenario-packs`
-package. Actual scenario packs live in their own catalog repositories and consume
-this contract; this repo does not host packs.
+package. It is subordinate to ACES core (`aces-sdl`), exists to make authoring
+and shipping ACES scenarios easier, and defines no extensions to ACES semantics
+([ADR 0009](decisions/adrs/0009-scenario-packs-subordinate-to-aces.md)). Actual
+scenario packs live in their own catalog repositories and consume this contract;
+this repo does not host packs.
 
 ## Definition
 

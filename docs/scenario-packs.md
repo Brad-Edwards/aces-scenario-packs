@@ -148,6 +148,64 @@ explicit upstream pin lands once ACES marks it stable. The bundled
 [layout contract](../src/aces_scenario_packs/resources/contract/pack-layout.md)
 carries the full field-by-field mapping.
 
+## Pack Content Identity
+
+A consumer that ingests a pack by reference (path/key + version + digest) needs
+to prove which concrete bytes the identity covers. ACES owns that portable model:
+`associated-artifact-manifest-v1` attaches one exact payload set to a scenario
+parent, `associated-artifact-set/v1` derives its set digest, and the ACES
+validator binds the parent, set, checksums, sizes, and staged bytes.
+
+A pack opting into content identity points at the ACES JSON manifest from
+`pack.yaml`:
+
+```yaml
+associated_artifact_manifest: associated-artifacts.json
+```
+
+Each artifact keeps its opaque manifest-local id and uses a pack-local locator
+such as `aces-scenario-pack:/docs/operator-guide.md`. The URI is not integrity
+evidence; this package resolves it inside the opened pack root and supplies the
+concrete bytes to ACES. The manifest carrier and
+`sdl/.aces/module-cache/` are excluded, while every other regular file must be
+declared. Missing, extra, unsafe, or changed members fail closed.
+
+The public, in-process API separates authoring derivation from consumer
+validation:
+
+```python
+from aces_scenario_packs import (
+    derive_pack_content_manifest,
+    pack_content_digest,
+    validate_pack_content_manifest,
+    verify_pack_content_digest,
+)
+
+derived = derive_pack_content_manifest(pack_root)  # persist during authoring/release
+declared = validate_pack_content_manifest(pack_root)
+digest = pack_content_digest(pack_root)            # declared ACES set digest
+verify_pack_content_digest(pack_root, expected)    # full validation, then compare
+```
+
+Derivation recomputes descriptor checksums, sizes, and the set digest from a
+caller-owned immutable staging area. Validation instead requires the manifest
+already shipped with the pack to agree with those bytes. Both parse the SDL
+parent through ACES. Neither runs git, a subprocess, pack-local code, network
+resolution, or archive extraction.
+
+**Set identity is not parent identity or trust.** Per
+[ADR 0012](decisions/adrs/0012-pack-content-identity-and-trust-boundary.md), this
+repository owns only pack layout, safe materialization, and exact inventory.
+ACES owns canonicalization and byte-binding semantics. The resulting
+`associated_artifact_set` identity is distinct from the scenario semantic
+digest; neither one proves authenticity, authorization, entitlement, or safe
+handling.
+
+A directory API cannot make mutable storage atomic. Consumers must acquire and
+immutably stage a pack, validate and digest that exact staging area, atomically
+promote the same bytes, and reverify before use when the storage boundary does
+not make that redundant.
+
 ## Validation Oracles
 
 When a pack ships an oracle layer, keep the hidden contract in

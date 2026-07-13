@@ -14,8 +14,6 @@ import hashlib
 import hmac
 import os
 import re
-import stat
-import unicodedata
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
@@ -32,6 +30,8 @@ from aces_contracts.associated_artifacts import (
 from aces_contracts.contracts import AssociatedArtifactManifestModel
 from aces_contracts.diagnostics import Diagnostic
 from aces_sdl import SDLError, parse_sdl_file
+
+from . import _pack_fs
 
 _MANIFEST_POINTER = "associated_artifact_manifest"
 _PACK_MANIFEST = "pack.yaml"
@@ -74,213 +74,77 @@ class PackDigestError(ValueError):
 def _require_descriptor_platform() -> None:
     """Fail unless the host supports descriptor-anchored, no-follow reads."""
 
-    if not _NOFOLLOW or not _DIRECTORY or os.open not in os.supports_dir_fd or os.stat not in os.supports_dir_fd:
-        raise PackDigestError("descriptor-anchored pack reads are unsupported on this platform")
+    _pack_fs.require_descriptor_platform(
+        error_type=PackDigestError, nofollow=_NOFOLLOW, directory=_DIRECTORY
+    )
 
 
 def _open_root(pack_root: str | os.PathLike[str]) -> tuple[str, int]:
     """Open and return one canonical pack root plus its directory descriptor."""
 
-    _require_descriptor_platform()
-    root = os.fspath(pack_root)
-    if not root:
-        raise PackDigestError("pack root is empty")
-    try:
-        if os.path.islink(root):
-            raise PackDigestError("pack root is a symlink")
-        fd = os.open(root, os.O_RDONLY | _DIRECTORY | _NOFOLLOW)
-        root_stat = os.fstat(fd)
-    except PackDigestError:
-        raise
-    except OSError as exc:
-        raise PackDigestError("pack root is not an accessible directory") from exc
-    if not stat.S_ISDIR(root_stat.st_mode):
-        os.close(fd)
-        raise PackDigestError("pack root is not a directory")
-    return os.path.realpath(root), fd
-
-
-def _normalize_component(name: str) -> str:
-    """Return a canonical UTF-8 NFC path component or fail closed."""
-
-    normalized = unicodedata.normalize("NFC", name)
-    if name != normalized or not name or name in {".", ".."} or "/" in name or "\\" in name:
-        raise PackDigestError("pack member name is not canonical")
-    try:
-        name.encode("utf-8")
-    except UnicodeEncodeError as exc:
-        raise PackDigestError("pack member name is not valid UTF-8") from exc
-    return name
+    return _pack_fs.open_root(
+        pack_root, error_type=PackDigestError,
+        nofollow=_NOFOLLOW, directory=_DIRECTORY,
+    )
 
 
 def _normalize_relpath(value: str) -> str:
     """Return a canonical slash-separated path relative to the pack root."""
 
-    if not isinstance(value, str) or not value or os.path.isabs(value) or "\\" in value:
-        raise PackDigestError("pack-relative path is not canonical")
-    parts = value.split("/")
-    normalized = "/".join(_normalize_component(part) for part in parts)
-    if normalized != value:
-        raise PackDigestError("pack-relative path is not canonical")
-    return normalized
+    return _pack_fs.normalize_relpath(value, error_type=PackDigestError)
+
+
+def _descriptor_flags() -> _pack_fs.DescriptorFlags:
+    """Return filesystem flags while preserving digest test overrides."""
+
+    return _pack_fs.DescriptorFlags(
+        nofollow=_NOFOLLOW,
+        directory=_DIRECTORY,
+        nonblock=_NONBLOCK,
+        binary=_BINARY,
+    )
 
 
 def _is_cache_path(parts: tuple[str, ...]) -> bool:
     """Return whether path components identify the excluded ACES cache tree."""
 
-    return parts[: len(_CACHE_PREFIX)] == _CACHE_PREFIX
-
-
-def _directory_names(directory_fd: int) -> list[str]:
-    """Return deterministic child names for an opened pack directory."""
-
-    try:
-        return sorted(os.listdir(directory_fd))
-    except OSError as exc:
-        raise PackDigestError("pack directory could not be traversed") from exc
-
-
-def _member_path(
-    raw_name: str,
-    prefix: tuple[str, ...],
-    seen_casefold: dict[str, str],
-) -> tuple[str, tuple[str, ...], str]:
-    """Canonicalize and collision-check one member path."""
-
-    name = _normalize_component(raw_name)
-    parts = (*prefix, name)
-    rel = "/".join(parts)
-    folded = rel.casefold()
-    prior = seen_casefold.get(folded)
-    if prior is not None and prior != rel:
-        raise PackDigestError("pack contains a case-insensitive path collision")
-    seen_casefold[folded] = rel
-    return name, parts, rel
-
-
-def _member_stat(directory_fd: int, name: str) -> os.stat_result:
-    """Inspect one child without following links."""
-
-    try:
-        return os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
-    except OSError as exc:
-        raise PackDigestError("pack member could not be inspected") from exc
-
-
-def _walk_child_directory(
-    directory_fd: int,
-    name: str,
-    parts: tuple[str, ...],
-    excluded: str,
-    seen_casefold: dict[str, str],
-) -> Iterator[str]:
-    """Yield payloads below one non-cache child directory."""
-
-    if _is_cache_path(parts):
-        return
-    try:
-        child_fd = os.open(name, os.O_RDONLY | _DIRECTORY | _NOFOLLOW, dir_fd=directory_fd)
-    except OSError as exc:
-        raise PackDigestError("pack directory could not be opened") from exc
-    try:
-        yield from _walk_directory(child_fd, parts, excluded, seen_casefold)
-    finally:
-        os.close(child_fd)
-
-
-def _require_regular_payload(member_stat: os.stat_result) -> None:
-    """Require one inventory member to be a singly-linked regular file."""
-
-    if not stat.S_ISREG(member_stat.st_mode):
-        raise PackDigestError("pack contains a non-regular file")
-    if member_stat.st_nlink > 1:
-        raise PackDigestError("pack contains a multiply-linked file")
-
-
-def _walk_member(
-    directory_fd: int,
-    name: str,
-    parts: tuple[str, ...],
-    rel: str,
-    excluded: str,
-    seen_casefold: dict[str, str],
-) -> Iterator[str]:
-    """Yield payload paths contributed by one inspected directory member."""
-
-    member_stat = _member_stat(directory_fd, name)
-    if stat.S_ISLNK(member_stat.st_mode):
-        raise PackDigestError("pack contains a symlink")
-    if stat.S_ISDIR(member_stat.st_mode):
-        yield from _walk_child_directory(directory_fd, name, parts, excluded, seen_casefold)
-    else:
-        _require_regular_payload(member_stat)
-        if rel != excluded:
-            yield rel
-
-
-def _walk_directory(
-    directory_fd: int,
-    prefix: tuple[str, ...],
-    excluded: str,
-    seen_casefold: dict[str, str],
-) -> Iterator[str]:
-    """Yield a deterministic, safe inventory below one opened directory."""
-
-    for raw_name in _directory_names(directory_fd):
-        name, parts, rel = _member_path(raw_name, prefix, seen_casefold)
-        yield from _walk_member(directory_fd, name, parts, rel, excluded, seen_casefold)
+    return parts[:len(_CACHE_PREFIX)] == _CACHE_PREFIX
 
 
 def _inventory(root_fd: int, excluded: str) -> tuple[str, ...]:
     """Return the bounded exact payload inventory below an opened pack root."""
 
-    members = tuple(_walk_directory(root_fd, (), excluded, {}))
-    if len(members) > _MAX_PACK_MEMBERS:
-        raise PackDigestError("pack member count exceeds the validation limit")
-    return members
+    return _pack_fs.inventory(
+        root_fd,
+        max_members=_MAX_PACK_MEMBERS,
+        excluded_paths=frozenset({excluded}),
+        excluded_prefixes=(_CACHE_PREFIX,),
+        error_type=PackDigestError,
+        flags=_descriptor_flags(),
+    )
 
 
 def _open_member(root_fd: int, rel: str) -> int:
     """Open one canonical pack member through no-follow directory descriptors."""
 
-    parts = _normalize_relpath(rel).split("/")
-    current_fd = os.dup(root_fd)
-    try:
-        for part in parts[:-1]:
-            next_fd = os.open(part, os.O_RDONLY | _DIRECTORY | _NOFOLLOW, dir_fd=current_fd)
-            os.close(current_fd)
-            current_fd = next_fd
-        file_fd = os.open(
-            parts[-1], os.O_RDONLY | _NOFOLLOW | _NONBLOCK | _BINARY, dir_fd=current_fd
-        )
-    except OSError as exc:
-        raise PackDigestError("pack member could not be opened") from exc
-    finally:
-        os.close(current_fd)
-    member_stat = os.fstat(file_fd)
-    if not stat.S_ISREG(member_stat.st_mode) or member_stat.st_nlink > 1:
-        os.close(file_fd)
-        raise PackDigestError("pack member is not a singly-linked regular file")
-    return file_fd
+    return _pack_fs.open_member(
+        root_fd,
+        rel,
+        error_type=PackDigestError,
+        flags=_descriptor_flags(),
+    )
 
 
 def _read_member_bytes(root_fd: int, rel: str, *, max_bytes: int) -> bytes:
     """Read bounded metadata bytes from one descriptor-anchored member."""
 
-    fd = _open_member(root_fd, rel)
-    chunks: list[bytes] = []
-    try:
-        total = 0
-        while chunk := os.read(fd, min(_READ_CHUNK, max_bytes + 1 - total)):
-            chunks.append(chunk)
-            total += len(chunk)
-            if total > max_bytes:
-                raise PackDigestError("pack metadata exceeds the validation limit")
-    except OSError as exc:
-        raise PackDigestError("pack member could not be read") from exc
-    finally:
-        os.close(fd)
-    return b"".join(chunks)
+    return _pack_fs.read_member_bytes(
+        root_fd,
+        rel,
+        max_bytes=max_bytes,
+        error_type=PackDigestError,
+        flags=_descriptor_flags(),
+    )
 
 
 class _DescriptorReader(object):

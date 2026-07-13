@@ -46,10 +46,17 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Callable, Iterator
 
 import yaml
 
-from collections.abc import Callable, Iterator
+from aces_scenario_packs.validation import (
+    CONTENT_SAFETY_FLAGS as _SHARED_CONTENT_SAFETY_FLAGS,
+    _schema_violations,
+    _validate_pack_for_author_ci,
+)
+
+CONTENT_SAFETY_FLAGS = _SHARED_CONTENT_SAFETY_FLAGS
 
 # Canonical contract resources ship inside this installed package (schemas,
 # template, oracle fixtures + model). They are resolved relative to the package,
@@ -77,17 +84,9 @@ COMPATIBILITY_EXAMPLE_FILE = os.path.join("template", "pack.compatibility.exampl
 PROVENANCE_EXAMPLE_FILE = os.path.join("template", "docs", "provenance-ledger.example.yaml")
 # Safety attestations that must all be true to ship — the policy is EXCLUSION of
 # real sensitive content, never a weaker classification.
-CONTENT_SAFETY_FLAGS = (
-    "no_real_malware",
-    "no_real_third_party_targets",
-    "no_real_credentials",
-    "no_sensitive_data",
-    "offensive_tooling_boundary",
-)
 # Publication-review gates the ledger must cover (acceptance criterion: a review
 # checklist covering licensing, attribution, sensitive data, and offensive
 # tooling boundaries). `customer-overlay` is an optional extra gate.
-REQUIRED_REVIEW_GATES = ("licensing", "attribution", "sensitive-data", "offensive-tooling")
 
 # Anti-extension guard vocabulary (issue #83). This repository defines ZERO
 # extensions to ACES semantics (ADR 0009): scoring, validation-oracle, telemetry,
@@ -126,6 +125,35 @@ def provenance_example_path() -> str:
 # Packs are scenarios/<name>/ with a pack.yaml. `_template` is a scaffold and
 # `_oracle` is the shared oracle model, not packs; the gate skips both.
 SKIP = {"_template", "_oracle"}
+
+
+class _AuthorStaticView(object):
+    """One shared per-pack static-validation snapshot for author-CI adapters."""
+
+    __slots__ = (
+        "global_failures",
+        "manifest_failures",
+        "provenance_failures",
+        "sdl_failures",
+        "scenarios",
+    )
+
+    def __init__(
+        self,
+        global_failures: tuple[str, ...],
+        manifest_failures: tuple[str, ...],
+        provenance_failures: tuple[str, ...],
+        sdl_failures: tuple[str, ...],
+        scenarios: tuple[object, ...],
+    ) -> None:
+        self.global_failures = global_failures
+        self.manifest_failures = manifest_failures
+        self.provenance_failures = provenance_failures
+        self.sdl_failures = sdl_failures
+        self.scenarios = scenarios
+
+
+_AUTHOR_STATIC_CACHE: dict[str, _AuthorStaticView] = {}
 
 # Operator tokens that must never reach participant-facing surfaces.
 TOKEN_PATTERNS = [
@@ -272,17 +300,6 @@ def _sdl_docs(pack: str) -> list[str]:
     ]
 
 
-def _realpath_inside_pack(pack_root: str, path: str) -> bool:
-    """True when ``path``'s real location is contained in ``pack_root``.
-
-    Stronger than :func:`_path_inside_pack`: it resolves symlinks so a symlinked
-    SDL document cannot point ACES at a file outside the pack root.
-    """
-    root = os.path.realpath(pack_root)
-    target = os.path.realpath(path)
-    return os.path.commonpath([root, target]) == root
-
-
 def _sdl_node_ids(scenario: object) -> set[str]:
     """Node ids declared by a parsed ACES ``Scenario`` (the ``nodes.<id>`` keys).
 
@@ -293,17 +310,113 @@ def _sdl_node_ids(scenario: object) -> set[str]:
     return set(getattr(scenario, "nodes", {}) or {})
 
 
-def _bounded_sdl_error(exc: BaseException) -> str:
-    """A bounded, path-stripped one-line rendering of an ACES SDL error.
+def _author_provenance_failure(pack: str, code: str, detail: str) -> str:
+    """Render one shared provenance code for author CI."""
 
-    ACES prepends the absolute file path and pydantic can echo input values on
-    later lines; per ADR 0011 the CI-facing diagnostic must not dump raw SDL,
-    flag values, or other source payloads. Keep only the first line, drop the
-    leading ``<abs path>: `` ACES adds, and cap the length.
-    """
-    first_line = str(exc).splitlines()[0] if str(exc) else exc.__class__.__name__
-    detail = first_line.split(": ", 1)[-1] if ": " in first_line else first_line
-    return f"{exc.__class__.__name__}: {detail[:200]}"
+    if code == "provenance.pointer.missing":
+        failure = (
+            f"provenance ledger MISSING: scenarios/{pack}/{PACK_MANIFEST_FILE} "
+            "has no provenance_ledger pointer"
+        )
+    elif code == "provenance.pointer.invalid":
+        failure = (
+            f"provenance ledger INVALID: {pack}: provenance_ledger path "
+            "escapes pack root"
+        )
+    elif code == "provenance.missing":
+        failure = f"provenance ledger MISSING: scenarios/{pack}/{detail}"
+    elif code == "provenance.name-mismatch":
+        failure = f"provenance ledger INVALID: {pack}: pack name mismatch"
+    elif code == "provenance.safety.required":
+        field = detail.rsplit(":", 1)[-1]
+        failure = f"provenance ledger INVALID: {pack}: {field} must be true"
+    elif code == "provenance.review-gate.missing":
+        gate = detail.rsplit(".", 1)[-1]
+        failure = (
+            f"provenance ledger INVALID: {pack}: review.gates missing required "
+            f"gate {gate}"
+        )
+    else:
+        failure = f"provenance ledger INVALID: scenarios/{pack}/{detail}: {code}"
+    return failure
+
+
+def _partition_author_static_error(
+    pack: str,
+    error: str,
+    global_failures: list[str],
+    manifest_failures: list[str],
+    provenance_failures: list[str],
+    sdl_failures: list[str],
+) -> None:
+    """Partition one shared error exactly once for the author-CI presentation."""
+
+    code, _, detail = error.partition(": ")
+    if code == "sdl.missing":
+        sdl_failures.append(
+            f"SDL MISSING: scenarios/{pack}/{SDL_DIR} has no *{SDL_DOC_SUFFIX} "
+            "start-state document (every pack requires an SDL start state)"
+        )
+    elif code.startswith("sdl."):
+        sdl_failures.append(f"SDL INVALID: scenarios/{pack}/{detail}: {code}")
+    elif code.startswith("provenance.") or detail.startswith(
+        "docs/provenance-ledger.yaml"
+    ):
+        provenance_failures.append(_author_provenance_failure(pack, code, detail))
+    elif code.startswith(("pack.", "compatibility.")) or detail.startswith(
+        ("pack.yaml", "pack.compatibility.yaml")
+    ):
+        manifest_failures.append(
+            f"compatibility manifest INVALID: scenarios/{pack}/{detail}: {code}"
+        )
+    else:
+        global_failures.append(f"PACK STATIC INVALID: scenarios/{pack}: {code}")
+
+
+def _author_static_view(pack: str) -> _AuthorStaticView:
+    """Return the sole static-validation snapshot for one pack in this run."""
+
+    pack_root = os.path.abspath(os.path.join(SCEN, pack))
+    cached = _AUTHOR_STATIC_CACHE.get(pack_root)
+    if cached is not None:
+        return cached
+    result, scenarios = _validate_pack_for_author_ci(pack_root)
+    global_failures: list[str] = []
+    manifest_failures: list[str] = []
+    provenance_failures: list[str] = []
+    sdl_failures: list[str] = []
+    for error in result.errors:
+        _partition_author_static_error(
+            pack,
+            error,
+            global_failures,
+            manifest_failures,
+            provenance_failures,
+            sdl_failures,
+        )
+    view = _AuthorStaticView(
+        tuple(global_failures),
+        tuple(manifest_failures),
+        tuple(provenance_failures),
+        tuple(sdl_failures),
+        scenarios,
+    )
+    _AUTHOR_STATIC_CACHE[pack_root] = view
+    return view
+
+
+def check_static_contract(failures: list[str]) -> dict[str, _AuthorStaticView]:
+    """Validate and report every pack's shared static contract exactly once."""
+
+    views: dict[str, _AuthorStaticView] = {}
+    for pack in _packs():
+        view = _author_static_view(pack)
+        views[pack] = view
+        failures.extend(view.global_failures)
+        failures.extend(view.manifest_failures)
+        failures.extend(view.provenance_failures)
+        failures.extend(view.sdl_failures)
+    return views
 
 
 def _iter_placement_hosts(pack: str, failures: list[str]) -> Iterator[str]:
@@ -325,40 +438,26 @@ def _iter_placement_hosts(pack: str, failures: list[str]) -> Iterator[str]:
             yield row["host"]
 
 
-def _check_pack_sdl(pack: str, parse_sdl_file: Callable[..., object],
-                    sdl_error: type[BaseException], failures: list[str]) -> None:
-    """Validate one pack's SDL start state through ACES and join placement hosts."""
-    from pathlib import Path
-
-    pack_root = os.path.join(SCEN, pack)
-    docs = _sdl_docs(pack)
-    if not docs:
-        failures.append(
-            f"SDL MISSING: scenarios/{pack}/{SDL_DIR} has no *{SDL_DOC_SUFFIX} "
-            "start-state document (every pack requires an SDL start state)")
-        return
+def _check_pack_sdl(
+    pack: str,
+    failures: list[str],
+    static_view: _AuthorStaticView | None = None,
+) -> None:
+    """Delegate static SDL validation, then perform the author-only placement join."""
+    report_static = static_view is None
+    view = static_view or _author_static_view(pack)
+    if report_static:
+        failures.extend(view.sdl_failures)
 
     node_ids: set[str] = set()
-    parsed_any = False
-    for doc in docs:
-        rel = os.path.relpath(doc, _REPO)
-        if not _realpath_inside_pack(pack_root, doc):
-            failures.append(f"SDL INVALID: {rel}: path escapes pack root")
-            continue
-        try:
-            scenario = parse_sdl_file(Path(doc))
-        # sdl_error is ACES's own parse/validation failure; OSError covers an
-        # unreadable/missing SDL file (FileNotFoundError is an OSError subclass).
-        except (sdl_error, OSError) as exc:
-            failures.append(f"SDL INVALID: {rel}: {_bounded_sdl_error(exc)}")
-            continue
+    for scenario in view.scenarios:
         node_ids |= _sdl_node_ids(scenario)
-        parsed_any = True
-        print(f"  [ok] {os.path.relpath(doc, SCEN)}")
+    if view.scenarios:
+        print(f"  [ok] {pack} SDL documents ({len(view.scenarios)})")
 
     # Only join placement hosts when at least one variant validated; otherwise
     # the SDL failure above is the actionable one and the node set is unknown.
-    if not parsed_any:
+    if not view.scenarios:
         return
     for host in _iter_placement_hosts(pack, failures):
         if host not in node_ids:
@@ -367,7 +466,10 @@ def _check_pack_sdl(pack: str, parse_sdl_file: Callable[..., object],
                 f"host {host!r} does not resolve to an SDL start-state node")
 
 
-def check_sdl(failures: list[str]) -> None:
+def check_sdl(
+    failures: list[str],
+    static_views: dict[str, _AuthorStaticView] | None = None,
+) -> None:
     """Validate every pack's ``sdl/`` through ACES and cross-check flag placement.
 
     ADR 0011: SDL is validated *through ACES* (``parse_sdl_file`` with full
@@ -377,14 +479,18 @@ def check_sdl(failures: list[str]) -> None:
     dependency all fail.
     """
     try:
-        parse_sdl_file, sdl_error = _load_aces_sdl()
+        _load_aces_sdl()
     except ImportError as exc:
         failures.append(
             "SDL VALIDATION UNAVAILABLE: aces-sdl (pinned dependency, ADR 0011) "
             f"is not importable: {exc}")
         return
     for pack in _packs():
-        _check_pack_sdl(pack, parse_sdl_file, sdl_error, failures)
+        _check_pack_sdl(
+            pack,
+            failures,
+            static_views.get(pack) if static_views is not None else None,
+        )
 
 
 def _iter_text_files(root: str) -> Iterator[str]:
@@ -550,164 +656,28 @@ def _load_yaml(path: str, failures: list[str], label: str) -> object:
         return None
 
 
-def _resolve_ref(schema: dict[str, object], ref: str) -> dict[str, object] | None:
-    """Resolve ref."""
-    prefix = "#/$defs/"
-    if not ref.startswith(prefix):
-        return None
-    target: object = schema
-    for part in ref[len("#/"):].split("/"):
-        if not isinstance(target, dict) or part not in target:
-            return None
-        target = target[part]
-    return target if isinstance(target, dict) else None
-
-
-_SCHEMA_TYPE_CHECKS = {
-    "object": lambda v: isinstance(v, dict),
-    "array": lambda v: isinstance(v, list),
-    "string": lambda v: isinstance(v, str),
-    "integer": lambda v: isinstance(v, int) and not isinstance(v, bool),
-    "boolean": lambda v: isinstance(v, bool),
-    "null": lambda v: v is None,
-}
-
-# Order matters: bool is a subclass of int, so it must be checked first.
-_SCHEMA_TYPE_LABELS = (
-    (bool, "boolean"),
-    (int, "integer"),
-    (str, "string"),
-    (list, "array"),
-    (dict, "object"),
-)
-
-
-def _schema_type_ok(value: object, type_name: str) -> bool:
-    """Schema type ok."""
-    return _SCHEMA_TYPE_CHECKS.get(type_name, lambda _v: True)(value)
-
-
-def _schema_type_label(value: object) -> str:
-    """Schema type label."""
-    if value is None:
-        return "null"
-    for py_type, label in _SCHEMA_TYPE_LABELS:
-        if isinstance(value, py_type):
-            return label
-    return type(value).__name__
-
-
-def _schema_expected_types(schema: dict[str, object]) -> list[str] | None:
-    """Schema expected types."""
-    expected = schema.get("type")
-    if expected is None:
-        return None
-    if isinstance(expected, list):
-        return [str(t) for t in expected]
-    return [str(expected)]
-
-
-def _validate_schema_type(value: object, schema: dict[str, object], path: str,
-                          errors: list[str]) -> bool:
-    """Validate schema type."""
-    expected_types = _schema_expected_types(schema)
-    if expected_types is None:
-        return True
-    if any(_schema_type_ok(value, t) for t in expected_types):
-        return True
-    errors.append(
-        f"{path}: expected {'/'.join(expected_types)}, got "
-        f"{_schema_type_label(value)}")
-    return False
-
-
-def _validate_schema_value_constraints(value: object, schema: dict[str, object],
-                                       path: str, errors: list[str]) -> None:
-    """Validate schema value constraints."""
-    if "const" in schema and value != schema["const"]:
-        errors.append(f"{path}: expected constant {schema['const']!r}")
-    if "enum" in schema and value not in schema["enum"]:
-        errors.append(f"{path}: unsupported value {value!r}")
-    if isinstance(value, str) and "pattern" in schema:
-        if not re.fullmatch(str(schema["pattern"]), value):
-            errors.append(f"{path}: does not match required pattern")
-
-
 def _schema_properties(schema: dict[str, object]) -> dict[str, object]:
     """Schema properties."""
     props = schema.get("properties", {})
     return props if isinstance(props, dict) else {}
 
 
-def _validate_required_fields(value: dict[str, object], schema: dict[str, object],
-                              path: str, errors: list[str]) -> None:
-    """Validate required fields."""
-    required = schema.get("required", [])
-    if not isinstance(required, list):
-        return
-    for key in required:
-        if key not in value:
-            errors.append(f"{path}.{key}: required field missing")
-
-
-def _validate_known_fields(value: dict[str, object], schema: dict[str, object],
-                           props: dict[str, object], path: str,
-                           errors: list[str]) -> None:
-    """Validate known fields."""
-    if schema.get("additionalProperties") is not False:
-        return
-    for key in value:
-        if key not in props:
-            errors.append(f"{path}.{key}: unknown field")
-
-
-def _validate_schema_object(value: dict[str, object], schema: dict[str, object],
-                            root_schema: dict[str, object], path: str,
-                            errors: list[str]) -> None:
-    """Validate schema object."""
-    props = _schema_properties(schema)
-    _validate_required_fields(value, schema, path, errors)
-    _validate_known_fields(value, schema, props, path, errors)
-    for key, child_schema in props.items():
-        if key in value and isinstance(child_schema, dict):
-            _validate_json_schema_subset(
-                value[key], child_schema, root_schema, f"{path}.{key}", errors)
-
-
-def _validate_schema_array(value: list[object], schema: dict[str, object],
-                           root_schema: dict[str, object], path: str,
-                           errors: list[str]) -> None:
-    """Validate schema array."""
-    if "minItems" in schema and len(value) < int(schema["minItems"]):
-        errors.append(f"{path}: expected at least {schema['minItems']} item(s)")
-    item_schema = schema.get("items")
-    if not isinstance(item_schema, dict):
-        return
-    for idx, item in enumerate(value):
-        _validate_json_schema_subset(item, item_schema, root_schema, f"{path}[{idx}]",
-                                     errors)
-
-
 def _validate_json_schema_subset(value: object, schema: dict[str, object],
                                  root_schema: dict[str, object], path: str,
                                  errors: list[str]) -> None:
-    """Validate json schema subset."""
-    if "$ref" in schema:
-        resolved = _resolve_ref(root_schema, str(schema["$ref"]))
-        if resolved is None:
-            errors.append(f"{path}: unresolved schema ref {schema['$ref']}")
-            return
-        _validate_json_schema_subset(value, resolved, root_schema, path, errors)
-        return
-
-    if not _validate_schema_type(value, schema, path, errors):
-        return
-
-    _validate_schema_value_constraints(value, schema, path, errors)
-    if isinstance(value, dict):
-        _validate_schema_object(value, schema, root_schema, path, errors)
-    if isinstance(value, list):
-        _validate_schema_array(value, schema, root_schema, path, errors)
+    """Render the shared pack-schema validator for author-CI diagnostics."""
+    for violation in _schema_violations(value, schema, root_schema, path):
+        descriptions = {
+            "required": "required field missing",
+            "unknown": "unknown field",
+            "type": "unexpected type",
+            "const": "unexpected constant",
+            "enum": "unsupported value",
+            "pattern": "does not match required pattern",
+            "min-items": "too few items",
+            "ref": "unresolved schema ref",
+        }
+        errors.append(f"{violation.path}: {descriptions.get(violation.code, 'invalid')}")
 
 
 def _path_inside_pack(pack_root: str, rel_path: str) -> bool:
@@ -850,47 +820,42 @@ def _check_duplicate_ids(manifest: dict[str, object], failures: list[str], pack:
             seen.add(value)
 
 
-def _load_pack_doc(pack: str, pack_yaml: dict[str, object], key: str,
-                   label: str, schema_path: str, failures: list[str], *,
-                   required: bool) -> tuple[dict[str, object], dict[str, object], str] | None:
-    """Load a pack-referenced YAML doc and its schema, or None (recording a failure)."""
-    pack_root = os.path.join(SCEN, pack)
-    rel = pack_yaml.get(key)
-    if not isinstance(rel, str) or not _path_inside_pack(pack_root, rel):
-        if rel is not None:
-            failures.append(f"{label} INVALID: {pack}: {key} path escapes pack root")
-        elif required:
-            failures.append(
-                f"{label} MISSING: scenarios/{pack}/{PACK_MANIFEST_FILE} has no {key} pointer")
-        return None
-    path = os.path.join(pack_root, rel)
-    schema = manifest = None
-    if os.path.isfile(path):
-        schema = _load_yaml(schema_path, failures, f"{label} schema")
-        manifest = _load_yaml(path, failures, label)
-    if not isinstance(schema, dict) or not isinstance(manifest, dict):
-        state = "MISSING" if not os.path.isfile(path) else "INVALID"
-        failures.append(f"{label} {state}: scenarios/{pack}/{rel}")
-        return None
-    return schema, manifest, rel
+def _referenced_compatibility_manifest(
+    pack_root: str,
+    pack_yaml: dict[str, object],
+    failures: list[str],
+) -> dict[str, object] | None:
+    """Load a contained, existing compatibility manifest for author joins."""
+
+    manifest: dict[str, object] | None = None
+    rel = pack_yaml.get("compatibility_manifest")
+    if isinstance(rel, str) and _path_inside_pack(pack_root, rel):
+        manifest_path = os.path.join(pack_root, rel)
+        if os.path.isfile(manifest_path):
+            loaded = _load_yaml(
+                manifest_path, failures, COMPATIBILITY_MANIFEST_LABEL
+            )
+            if isinstance(loaded, dict):
+                manifest = loaded
+    return manifest
 
 
-def _validate_compatibility_manifest(pack: str, pack_yaml: dict[str, object],
-                                     failures: list[str]) -> None:
-    """Validate compatibility manifest."""
+def _validate_compatibility_manifest(
+    pack: str,
+    pack_yaml: dict[str, object],
+    failures: list[str],
+    static_view: _AuthorStaticView | None = None,
+) -> None:
+    """Delegate compatibility shape checks, then run author-only deep joins."""
     pack_root = os.path.join(SCEN, pack)
-    loaded = _load_pack_doc(pack, pack_yaml, "compatibility_manifest",
-                            COMPATIBILITY_MANIFEST_LABEL, compatibility_schema_path(),
-                            failures, required=False)
-    if loaded is None:
+    report_static = static_view is None
+    view = static_view or _author_static_view(pack)
+    if report_static:
+        failures.extend(view.manifest_failures)
+
+    manifest = _referenced_compatibility_manifest(pack_root, pack_yaml, failures)
+    if manifest is None:
         return
-    schema, manifest, manifest_rel = loaded
-
-    errors: list[str] = []
-    _validate_json_schema_subset(manifest, schema, schema, "$", errors)
-    for error in errors:
-        failures.append(
-            f"compatibility manifest INVALID: scenarios/{pack}/{manifest_rel}: {error}")
 
     manifest_name = _get_nested(manifest, "pack.name")
     pack_name = pack_yaml.get("name")
@@ -929,7 +894,10 @@ def check_compatibility_schema_example(failures: list[str]) -> None:
         print("  [ok] _template/pack.compatibility.example.yaml")
 
 
-def check_manifest(failures: list[str]) -> None:
+def check_manifest(
+    failures: list[str],
+    static_views: dict[str, _AuthorStaticView] | None = None,
+) -> None:
     """Check manifest."""
     check_compatibility_schema_example(failures)
     for pack in _packs():
@@ -941,7 +909,12 @@ def check_manifest(failures: list[str]) -> None:
         if not isinstance(pack_yaml, dict):
             failures.append(f"manifest INVALID: scenarios/{pack}/{PACK_MANIFEST_FILE}")
             continue
-        _validate_compatibility_manifest(pack, pack_yaml, failures)
+        _validate_compatibility_manifest(
+            pack,
+            pack_yaml,
+            failures,
+            static_views.get(pack) if static_views is not None else None,
+        )
         print(f"  [ok] {pack}/{PACK_MANIFEST_FILE}")
 
 
@@ -1001,38 +974,6 @@ def _path_under_root(root: str, candidate: str) -> bool:
     """Path under root."""
     return (_norm_manifest_path(root) == _norm_manifest_path(candidate)
             or _path_is_parent(root, candidate))
-
-
-def _check_provenance_content_safety(ledger: dict[str, object], failures: list[str],
-                                     pack: str) -> None:
-    """Check provenance content safety."""
-    safety = ledger.get("content_safety")
-    if not isinstance(safety, dict):
-        return
-    for flag in CONTENT_SAFETY_FLAGS:
-        if safety.get(flag) is not True:
-            failures.append(
-                f"provenance ledger INVALID: {pack}: content_safety.{flag} must be "
-                "true (policy is exclusion of real sensitive content)")
-
-
-def _check_provenance_review_gates(ledger: dict[str, object], failures: list[str],
-                                   pack: str) -> None:
-    """Check provenance review gates."""
-    review = ledger.get("review")
-    if not isinstance(review, dict):
-        return
-    gates = review.get("gates")
-    present: set[str] = set()
-    if isinstance(gates, list):
-        for gate in gates:
-            if isinstance(gate, dict) and isinstance(gate.get("gate_id"), str):
-                present.add(gate["gate_id"])
-    for required_gate in REQUIRED_REVIEW_GATES:
-        if required_gate not in present:
-            failures.append(
-                f"provenance ledger INVALID: {pack}: review.gates missing required "
-                f"gate {required_gate}")
 
 
 def _check_provenance_sources(ledger: dict[str, object], failures: list[str],
@@ -1121,32 +1062,26 @@ def _check_provenance_artifacts(ledger: dict[str, object], pack_root: str,
 
 
 def _validate_provenance_ledger(pack: str, pack_yaml: dict[str, object],
-                                failures: list[str]) -> None:
-    """Validate provenance ledger."""
+                                failures: list[str],
+                                static_view: _AuthorStaticView | None = None) -> None:
+    """Delegate static provenance checks, then run author-only relational joins."""
     pack_root = os.path.join(SCEN, pack)
-    loaded = _load_pack_doc(pack, pack_yaml, "provenance_ledger",
-                            "provenance ledger", provenance_schema_path(),
-                            failures, required=True)
-    if loaded is None:
+    report_static = static_view is None
+    view = static_view or _author_static_view(pack)
+    if report_static:
+        failures.extend(view.provenance_failures)
+
+    rel = pack_yaml.get("provenance_ledger")
+    if not isinstance(rel, str) or not _path_inside_pack(pack_root, rel):
         return
-    schema, ledger, ledger_rel = loaded
-
-    errors: list[str] = []
-    _validate_json_schema_subset(ledger, schema, schema, "$", errors)
-    for error in errors:
-        failures.append(
-            f"provenance ledger INVALID: scenarios/{pack}/{ledger_rel}: {error}")
-
-    ledger_name = _get_nested(ledger, "pack.name")
-    pack_name = pack_yaml.get("name")
-    if ledger_name != pack_name:
-        failures.append(
-            f"provenance ledger INVALID: {pack}: pack name mismatch "
-            f"{PACK_MANIFEST_FILE}={pack_name!r} ledger={ledger_name!r}")
+    ledger_path = os.path.join(pack_root, rel)
+    if not os.path.isfile(ledger_path):
+        return
+    ledger = _load_yaml(ledger_path, failures, "provenance ledger")
+    if not isinstance(ledger, dict):
+        return
 
     _check_provenance_duplicate_ids(ledger, failures, pack)
-    _check_provenance_content_safety(ledger, failures, pack)
-    _check_provenance_review_gates(ledger, failures, pack)
     _check_provenance_sources(ledger, failures, pack)
     source_ids = _provenance_source_ids(ledger)
     overlay_roots = _provenance_overlay_roots(ledger, pack_root, failures, pack)
@@ -1170,7 +1105,10 @@ def check_provenance_schema_example(failures: list[str]) -> None:
         print("  [ok] _template/docs/provenance-ledger.example.yaml")
 
 
-def check_provenance(failures: list[str]) -> None:
+def check_provenance(
+    failures: list[str],
+    static_views: dict[str, _AuthorStaticView] | None = None,
+) -> None:
     """Check provenance."""
     check_provenance_schema_example(failures)
     for pack in _packs():
@@ -1181,7 +1119,12 @@ def check_provenance(failures: list[str]) -> None:
         pack_yaml = _load_yaml(pack_yaml_path, failures, "manifest")
         if not isinstance(pack_yaml, dict):
             continue
-        _validate_provenance_ledger(pack, pack_yaml, failures)
+        _validate_provenance_ledger(
+            pack,
+            pack_yaml,
+            failures,
+            static_views.get(pack) if static_views is not None else None,
+        )
         print(f"  [ok] {pack}/{PACK_MANIFEST_FILE} provenance")
 
 
@@ -1306,6 +1249,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     _REPO = os.path.abspath(args.repo)
     SCEN = os.path.join(_REPO, "scenarios")
+    _AUTHOR_STATIC_CACHE.clear()
 
     failures: list[str] = []
     print("== shared oracle model ==")
@@ -1314,18 +1258,20 @@ def main(argv: list[str] | None = None) -> int:
     check_validators(failures)
     print("== test suites ==")
     check_tests(failures)
+    print("== static pack contract ==")
+    static_views = check_static_contract(failures)
     print("== sdl (ACES) ==")
-    check_sdl(failures)
+    check_sdl(failures, static_views)
     print("== visibility scan ==")
     check_visibility(failures)
     print("== pack drift scan ==")
     check_wizard_spider_pack_drift(failures)
     print("== manifests ==")
-    check_manifest(failures)
+    check_manifest(failures, static_views)
     print("== anti-extension guard ==")
     check_anti_extension(failures)
     print("== provenance ledgers ==")
-    check_provenance(failures)
+    check_provenance(failures, static_views)
     print("== golden readiness checklists ==")
     check_golden_checklist(failures)
     print()

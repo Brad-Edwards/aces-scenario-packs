@@ -1,6 +1,6 @@
 # Scenario pack convention
 
-**Scenario-pack contract version:** `1`
+**Scenario-pack contract version:** `2`
 
 This document is the authoritative layout convention every ACES scenario pack
 follows. It ships inside the `aces-scenario-packs` package alongside the schemas,
@@ -92,6 +92,8 @@ contents:                        # which optional layers ship; required ones are
   flag_layer: false              # flags/ + challenges/ + ctfd/
   reference_triangle: false      # build/ + tests/ + docs/walkthroughs/
   profile_bundles: false         # profiles/ — delivery/audience bundles
+# Optional; create and populate the ACES JSON before uncommenting (ADR 0012):
+# associated_artifact_manifest: associated-artifacts.json
 ```
 
 `status` tracks the pack's maturity: `draft` (SDL/design only), `built` (stands
@@ -105,8 +107,10 @@ ships under different terms.
 
 `pack.yaml` **must** point at `provenance_ledger: docs/provenance-ledger.yaml`
 (the [provenance ledger](#provenance-ledger-docsprovenance-ledgeryaml) — the
-required source/licensing/safety/publication contract) and **may** point at
-`compatibility_manifest: pack.compatibility.yaml`. The compatibility manifest is
+required source/licensing/safety/publication contract), **may** point at
+`compatibility_manifest: pack.compatibility.yaml`, and may opt into the ACES
+content-identity boundary with
+`associated_artifact_manifest: associated-artifacts.json`. The compatibility manifest is
 the richer product compatibility projection validated by
 [`pack-compatibility.schema.yaml`](../schemas/pack-compatibility.schema.yaml). It does not
 replace SDL, topology, profile, build, or CTFd ledgers. It indexes them for
@@ -589,6 +593,59 @@ aces-pack-release check --all          # lint + smoke + build-to-tempdir
 aces-pack-release build --pack <pack> --out dist/
 aces-pack-release metadata --pack <pack>
 ```
+
+## Pack content identity
+
+Pack content identity consumes the ACES
+`associated-artifact-manifest-v1` contract (ACES ADR-077); this repository does
+not define another digest framing or checksum model. A pack opting in declares a
+contained JSON pointer in `pack.yaml`:
+
+```yaml
+associated_artifact_manifest: associated-artifacts.json
+```
+
+The manifest uses `scope: scenario`, parent id equal to the pack name, logical id
+`<pack-name>-associated-artifacts`, and manifest version equal to the pack
+version. Its artifact ids are opaque ACES ids. Each payload locator uses
+`aces-scenario-pack:/<percent-encoded-root-relative-path>`, which is resolved only
+inside the opened pack root and never fetched as a network URI.
+
+The manifest carrier and exact `sdl/.aces/module-cache/` resolver cache are not
+payloads. Every other regular file must be represented by at least one locator,
+and every locator must resolve to an inventoried file. Scenario-pack payload
+checksums use SHA-256. ACES derives the canonical set digest and validates the
+concrete SDL parent, descriptor set, checksum, size, and byte reader for every
+entry.
+
+The package exposes authoring derivation and consumer validation separately:
+
+```python
+from aces_scenario_packs import (
+    derive_pack_content_manifest,
+    pack_content_digest,
+    validate_pack_content_manifest,
+    verify_pack_content_digest,
+)
+
+derived = derive_pack_content_manifest(pack_root)
+declared = validate_pack_content_manifest(pack_root)
+digest = pack_content_digest(pack_root)
+verify_pack_content_digest(pack_root, expected_digest)
+```
+
+This is an **associated set identity, not scenario identity or trust**. Per
+[ADR 0012](../../../docs/decisions/adrs/0012-pack-content-identity-and-trust-boundary.md)
+ACES owns the model, canonicalization, byte binding, diagnostics, and reusable
+asset trust mapping. This repository owns pack layout, safe pack-local
+materialization, and inventory completeness. The set digest is distinct from the
+SDL semantic digest, the `release.yaml` contract digest above, and SDL lock
+digests; none proves authenticity by itself.
+
+Callers must use an immutable staging area. Descriptor-anchored no-follow reads
+and before/after inventory checks fail closed during the operation, but a live
+directory walk is not atomic storage. Acquisition, atomic promotion, retention,
+permissions, and use-time verification remain consumer responsibilities.
 
 ## Explicitly not in scope
 

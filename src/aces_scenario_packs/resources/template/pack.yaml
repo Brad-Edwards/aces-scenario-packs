@@ -16,3 +16,6 @@ contents:                       # which optional layers ship; required ones are 
   profile_bundles: false        # profiles/ delivery/audience bundles
 compatibility_manifest: pack.compatibility.yaml
 provenance_ledger: docs/provenance-ledger.yaml   # REQUIRED: source/licensing/safety/publication contract (see ../README.md#provenance-ledger)
+# Optional ACES associated-artifact manifest for consumer-verifiable identity.
+# Create and populate the JSON before uncommenting (ADR 0012).
+# associated_artifact_manifest: associated-artifacts.json

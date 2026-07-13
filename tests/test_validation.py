@@ -57,7 +57,7 @@ class PackValidationFixture(unittest.TestCase):
     def pack_yaml(self) -> dict[str, object]:
         return yaml.safe_load((self.root / "pack.yaml").read_text(encoding="utf-8"))
 
-    def write_pack_yaml(self, value: dict[str, object]) -> None:
+    def _write_pack_yaml(self, value: dict[str, object]) -> None:
         (self.root / "pack.yaml").write_text(
             yaml.safe_dump(value, sort_keys=False), encoding="utf-8"
         )
@@ -92,7 +92,7 @@ class PublicValidationTests(PackValidationFixture):
     def test_pack_name_must_match_directory(self) -> None:
         pack = self.pack_yaml()
         pack["name"] = "different-pack"
-        self.write_pack_yaml(pack)
+        self._write_pack_yaml(pack)
         result = self.validate()
         self.assertIn("pack.identity.name-mismatch: pack.yaml:name", result.errors)
         self.assertNotIn("different-pack", "\n".join(result.errors))
@@ -102,14 +102,14 @@ class ProvenanceValidationTests(PackValidationFixture):
     def test_provenance_pointer_is_required_and_contained(self) -> None:
         pack = self.pack_yaml()
         del pack["provenance_ledger"]
-        self.write_pack_yaml(pack)
+        self._write_pack_yaml(pack)
         self.assertIn(
             "provenance.pointer.missing: pack.yaml:provenance_ledger",
             self.validate().errors,
         )
 
         pack["provenance_ledger"] = "../outside.yaml"
-        self.write_pack_yaml(pack)
+        self._write_pack_yaml(pack)
         self.assertIn(
             "provenance.pointer.invalid: pack.yaml:provenance_ledger",
             self.validate().errors,
@@ -122,7 +122,7 @@ class ProvenanceValidationTests(PackValidationFixture):
         )
         pack = self.pack_yaml()
         pack["provenance_ledger"] = "docs/alternate.yaml"
-        self.write_pack_yaml(pack)
+        self._write_pack_yaml(pack)
         self.assertIn(
             "provenance.pointer.invalid: pack.yaml:provenance_ledger",
             self.validate().errors,
@@ -162,7 +162,7 @@ class CompatibilityValidationTests(PackValidationFixture):
     def test_unreferenced_compatibility_manifest_is_optional(self) -> None:
         pack = self.pack_yaml()
         del pack["compatibility_manifest"]
-        self.write_pack_yaml(pack)
+        self._write_pack_yaml(pack)
         (self.root / "pack.compatibility.yaml").unlink()
         self.assertTrue(self.validate().ok)
 

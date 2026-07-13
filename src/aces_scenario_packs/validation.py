@@ -42,10 +42,12 @@ REQUIRED_REVIEW_GATES = (
 _RESOURCES = Path(__file__).with_name("resources")
 _PROVENANCE_SCHEMA = _RESOURCES / "schemas" / "provenance.schema.yaml"
 _COMPATIBILITY_SCHEMA = _RESOURCES / "schemas" / "pack-compatibility.schema.yaml"
+_PACK_MANIFEST = "pack.yaml"
+_FILESYSTEM_CHANGED = "filesystem.changed"
 
 
 @dataclass(frozen=True)
-class PackValidationLimits:
+class PackValidationLimits(object):
     """Resource limits for one :func:`validate_pack` call."""
 
     max_metadata_bytes: int = 1024 * 1024
@@ -77,7 +79,7 @@ class PackValidationLimits:
 
 
 @dataclass
-class ValidationResult:
+class ValidationResult(object):
     """The deterministic outcome of validating one scenario pack."""
 
     errors: list[str] = field(default_factory=list)
@@ -89,7 +91,9 @@ class ValidationResult:
         return not self.errors
 
 
-class _Errors:
+class _Errors(object):
+    """Bounded deterministic diagnostic collector."""
+
     def __init__(self, limits: PackValidationLimits) -> None:
         self._limits = limits
         self._items: list[str] = []
@@ -112,10 +116,14 @@ class _Errors:
 
 
 class _DuplicateKey(yaml.YAMLError):
+    """Strict YAML rejected a duplicate mapping key."""
+
     pass
 
 
 class _StrictLoader(yaml.SafeLoader):
+    """Safe YAML loader that rejects duplicate mapping keys."""
+
     def construct_mapping(
         self, node: yaml.nodes.MappingNode, deep: bool = False
     ) -> dict[object, object]:
@@ -132,7 +140,9 @@ class _StrictLoader(yaml.SafeLoader):
 
 
 @dataclass(frozen=True)
-class _SchemaViolation:
+class _SchemaViolation(object):
+    """Body-free schema violation code and field path."""
+
     code: str
     path: str
 
@@ -148,6 +158,8 @@ _SCHEMA_TYPE_CHECKS = {
 
 
 def _resolve_ref(schema: dict[str, object], ref: str) -> dict[str, object] | None:
+    """Resolve one local ``$defs`` reference in a trusted schema."""
+
     if not ref.startswith("#/$defs/"):
         return None
     target: object = schema
@@ -158,35 +170,23 @@ def _resolve_ref(schema: dict[str, object], ref: str) -> dict[str, object] | Non
     return target if isinstance(target, dict) else None
 
 
-def _expected_types(schema: dict[str, object]) -> tuple[str, ...]:
+def _expected_types(schema: dict[str, object]) -> tuple[str, ...] | None:
+    """Return declared JSON types, or ``None`` when type is unconstrained."""
+
     expected = schema.get("type")
     if expected is None:
-        return ()
+        return None
     if isinstance(expected, list):
         return tuple(str(item) for item in expected)
     return (str(expected),)
 
 
-def _schema_violations(
-    value: object,
-    schema: dict[str, object],
-    root_schema: dict[str, object],
-    path: str = "$",
+def _schema_value_violations(
+    value: object, schema: dict[str, object], path: str
 ) -> list[_SchemaViolation]:
-    violations: list[_SchemaViolation] = []
-    ref = schema.get("$ref")
-    if ref is not None:
-        resolved = _resolve_ref(root_schema, str(ref))
-        if resolved is None:
-            return [_SchemaViolation("ref", path)]
-        return _schema_violations(value, resolved, root_schema, path)
+    """Return scalar constraint violations at one schema path."""
 
-    expected = _expected_types(schema)
-    if expected and not any(
-        _SCHEMA_TYPE_CHECKS.get(name, lambda _value: True)(value)
-        for name in expected
-    ):
-        return [_SchemaViolation("type", path)]
+    violations: list[_SchemaViolation] = []
     if "const" in schema and value != schema["const"]:
         violations.append(_SchemaViolation("const", path))
     choices = schema.get("enum")
@@ -199,40 +199,96 @@ def _schema_violations(
         and re.fullmatch(str(pattern), value) is None
     ):
         violations.append(_SchemaViolation("pattern", path))
+    return violations
 
+
+def _schema_object_violations(
+    value: dict[object, object],
+    schema: dict[str, object],
+    root_schema: dict[str, object],
+    path: str,
+) -> list[_SchemaViolation]:
+    """Return object-shape and recursive property violations."""
+
+    violations: list[_SchemaViolation] = []
+    properties = schema.get("properties")
+    props = properties if isinstance(properties, dict) else {}
+    required = schema.get("required")
+    if isinstance(required, list):
+        violations.extend(
+            _SchemaViolation("required", f"{path}.{key}")
+            for key in required
+            if key not in value
+        )
+    if schema.get("additionalProperties") is False:
+        violations.extend(
+            _SchemaViolation("unknown", f"{path}.{key}")
+            for key in value
+            if key not in props
+        )
+    for key, child_schema in props.items():
+        if key in value and isinstance(child_schema, dict):
+            violations.extend(
+                _schema_violations(
+                    value[key], child_schema, root_schema, f"{path}.{key}"
+                )
+            )
+    return violations
+
+
+def _schema_array_violations(
+    value: list[object],
+    schema: dict[str, object],
+    root_schema: dict[str, object],
+    path: str,
+) -> list[_SchemaViolation]:
+    """Return array-size and recursive item violations."""
+
+    violations: list[_SchemaViolation] = []
+    minimum = schema.get("minItems")
+    if isinstance(minimum, int) and len(value) < minimum:
+        violations.append(_SchemaViolation("min-items", path))
+    item_schema = schema.get("items")
+    if isinstance(item_schema, dict):
+        for index, item in enumerate(value):
+            violations.extend(
+                _schema_violations(item, item_schema, root_schema, f"{path}[{index}]")
+            )
+    return violations
+
+
+def _schema_violations(
+    value: object,
+    schema: dict[str, object],
+    root_schema: dict[str, object],
+    path: str = "$",
+) -> list[_SchemaViolation]:
+    """Validate one value against the repository's trusted schema subset."""
+
+    ref = schema.get("$ref")
+    if ref is not None:
+        resolved = _resolve_ref(root_schema, str(ref))
+        if resolved is None:
+            return [_SchemaViolation("ref", path)]
+        return _schema_violations(value, resolved, root_schema, path)
+
+    expected = _expected_types(schema)
+    if expected is not None and not any(
+        _SCHEMA_TYPE_CHECKS.get(name, lambda _value: True)(value)
+        for name in expected
+    ):
+        return [_SchemaViolation("type", path)]
+    violations = _schema_value_violations(value, schema, path)
     if isinstance(value, dict):
-        properties = schema.get("properties")
-        props = properties if isinstance(properties, dict) else {}
-        required = schema.get("required")
-        if isinstance(required, list):
-            for key in required:
-                if key not in value:
-                    violations.append(_SchemaViolation("required", f"{path}.{key}"))
-        if schema.get("additionalProperties") is False:
-            for key in value:
-                if key not in props:
-                    violations.append(_SchemaViolation("unknown", f"{path}.{key}"))
-        for key, child_schema in props.items():
-            if key in value and isinstance(child_schema, dict):
-                violations.extend(
-                    _schema_violations(
-                        value[key], child_schema, root_schema, f"{path}.{key}"
-                    )
-                )
+        violations.extend(_schema_object_violations(value, schema, root_schema, path))
     elif isinstance(value, list):
-        minimum = schema.get("minItems")
-        if isinstance(minimum, int) and len(value) < minimum:
-            violations.append(_SchemaViolation("min-items", path))
-        item_schema = schema.get("items")
-        if isinstance(item_schema, dict):
-            for index, item in enumerate(value):
-                violations.extend(
-                    _schema_violations(item, item_schema, root_schema, f"{path}[{index}]")
-                )
+        violations.extend(_schema_array_violations(value, schema, root_schema, path))
     return violations
 
 
 def _check_yaml_events(text: str, limits: PackValidationLimits) -> None:
+    """Reject YAML streams that exceed structural expansion limits."""
+
     depth = aliases = nodes = 0
     for event in yaml.parse(text, Loader=yaml.SafeLoader):
         if isinstance(event, AliasEvent):
@@ -259,6 +315,8 @@ def _load_yaml_member(
     limits: PackValidationLimits,
     errors: _Errors,
 ) -> object | None:
+    """Load one bounded, strict YAML member through safe descriptors."""
+
     try:
         raw = _pack_fs.read_member_bytes(
             root_fd, rel, max_bytes=limits.max_metadata_bytes
@@ -276,11 +334,13 @@ def _load_yaml_member(
         if str(exc) == "pack metadata exceeds the validation limit":
             errors.add("resource.metadata-limit", rel)
         else:
-            errors.add("filesystem.changed", rel)
+            errors.add(_FILESYSTEM_CHANGED, rel)
     return None
 
 
 def _trusted_schema(path: Path) -> dict[str, object]:
+    """Load one packaged schema maintained with the installed validator."""
+
     value = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise RuntimeError("packaged validation schema is not an object")
@@ -294,6 +354,8 @@ def _add_schema_violations(
     value: object,
     schema: dict[str, object],
 ) -> None:
+    """Append stable diagnostics for schema-subset violations."""
+
     for violation in _schema_violations(value, schema, schema):
         errors.add(f"{prefix}.schema.{violation.code}", rel, violation.path)
 
@@ -308,26 +370,66 @@ def _pointer(
     required: bool,
     expected_path: str | None = None,
 ) -> str | None:
+    """Resolve and inventory-check one optional or required pack pointer."""
+
+    resolved: str | None = None
     value = pack.get(key)
     if value is None:
         if required:
-            errors.add(f"{label}.pointer.missing", "pack.yaml", key)
-        return None
-    if not isinstance(value, str):
-        errors.add(f"{label}.pointer.invalid", "pack.yaml", key)
-        return None
-    try:
-        rel = _pack_fs.normalize_relpath(value)
-    except _pack_fs.PackFilesystemError:
-        errors.add(f"{label}.pointer.invalid", "pack.yaml", key)
-        return None
-    if expected_path is not None and rel != expected_path:
-        errors.add(f"{label}.pointer.invalid", "pack.yaml", key)
-        return None
-    if rel not in inventory:
-        errors.add(f"{label}.missing", rel)
-        return None
-    return rel
+            errors.add(f"{label}.pointer.missing", _PACK_MANIFEST, key)
+    elif not isinstance(value, str):
+        errors.add(f"{label}.pointer.invalid", _PACK_MANIFEST, key)
+    else:
+        try:
+            rel = _pack_fs.normalize_relpath(value)
+        except _pack_fs.PackFilesystemError:
+            errors.add(f"{label}.pointer.invalid", _PACK_MANIFEST, key)
+        else:
+            if expected_path is not None and rel != expected_path:
+                errors.add(f"{label}.pointer.invalid", _PACK_MANIFEST, key)
+            elif rel not in inventory:
+                errors.add(f"{label}.missing", rel)
+            else:
+                resolved = rel
+    return resolved
+
+
+def _validate_provenance_safety(
+    ledger: dict[str, object], rel: str, errors: _Errors
+) -> None:
+    """Require every canonical content-safety attestation."""
+
+    safety = ledger.get("content_safety")
+    for flag_name in CONTENT_SAFETY_FLAGS:
+        if not isinstance(safety, dict) or safety.get(flag_name) is not True:
+            errors.add("provenance.safety.required", rel, f"content_safety.{flag_name}")
+
+
+def _review_gate_ids(ledger: dict[str, object]) -> set[str]:
+    """Return valid review gate identifiers from one provenance ledger."""
+
+    review = ledger.get("review")
+    gates = review.get("gates") if isinstance(review, dict) else None
+    if not isinstance(gates, list):
+        return set()
+    return {
+        gate_id
+        for row in gates
+        if isinstance(row, dict)
+        for gate_id in (row.get("gate_id"),)
+        if isinstance(gate_id, str)
+    }
+
+
+def _validate_provenance_review(
+    ledger: dict[str, object], rel: str, errors: _Errors
+) -> None:
+    """Require the canonical publication-review gates."""
+
+    present = _review_gate_ids(ledger)
+    for gate in REQUIRED_REVIEW_GATES:
+        if gate not in present:
+            errors.add("provenance.review-gate.missing", rel, f"review.gates.{gate}")
 
 
 def _validate_provenance(
@@ -337,6 +439,8 @@ def _validate_provenance(
     limits: PackValidationLimits,
     errors: _Errors,
 ) -> None:
+    """Validate the canonical referenced provenance ledger."""
+
     rel = _pointer(
         pack,
         "provenance_ledger",
@@ -360,24 +464,8 @@ def _validate_provenance(
     ledger_name = ledger_pack.get("name") if isinstance(ledger_pack, dict) else None
     if ledger_name != pack.get("name"):
         errors.add("provenance.name-mismatch", rel, "pack.name")
-    safety = ledger.get("content_safety")
-    for flag_name in CONTENT_SAFETY_FLAGS:
-        if not isinstance(safety, dict) or safety.get(flag_name) is not True:
-            errors.add("provenance.safety.required", rel, f"content_safety.{flag_name}")
-    review = ledger.get("review")
-    gates = review.get("gates") if isinstance(review, dict) else None
-    present = (
-        {
-            row.get("gate_id")
-            for row in gates
-            if isinstance(row, dict) and isinstance(row.get("gate_id"), str)
-        }
-        if isinstance(gates, list)
-        else set()
-    )
-    for gate in REQUIRED_REVIEW_GATES:
-        if gate not in present:
-            errors.add("provenance.review-gate.missing", rel, f"review.gates.{gate}")
+    _validate_provenance_safety(ledger, rel, errors)
+    _validate_provenance_review(ledger, rel, errors)
 
 
 def _validate_compatibility(
@@ -387,6 +475,8 @@ def _validate_compatibility(
     limits: PackValidationLimits,
     errors: _Errors,
 ) -> None:
+    """Validate an optional referenced compatibility manifest."""
+
     rel = _pointer(
         pack, "compatibility_manifest", "compatibility", inventory, errors, required=False
     )
@@ -402,83 +492,177 @@ def _validate_compatibility(
     )
 
 
+def _open_validation_root(
+    pack_root: str | os.PathLike[str], errors: _Errors
+) -> tuple[str, int] | None:
+    """Open one pack root or record a stable invalid-root diagnostic."""
+
+    opened: tuple[str, int] | None = None
+    try:
+        opened = _pack_fs.open_root(pack_root)
+    except _pack_fs.PackFilesystemError:
+        errors.add("filesystem.invalid-root")
+    return opened
+
+
+def _safe_inventory(
+    root_fd: int, limits: PackValidationLimits, errors: _Errors
+) -> frozenset[str] | None:
+    """Inventory one pack or record its bounded filesystem failure."""
+
+    inventory: frozenset[str] | None = None
+    try:
+        inventory = frozenset(
+            _pack_fs.inventory(root_fd, max_members=limits.max_members)
+        )
+    except _pack_fs.PackFilesystemError as exc:
+        if str(exc) == "pack member count exceeds the validation limit":
+            errors.add("resource.member-limit")
+        else:
+            errors.add("filesystem.unsafe-member")
+    return inventory
+
+
+def _validate_pack_identity(
+    pack: dict[str, object], root: str, errors: _Errors
+) -> None:
+    """Validate the manifest's required identity fields and directory name."""
+
+    for key in ("name", "title", "version"):
+        value = pack.get(key)
+        if not isinstance(value, str) or not value:
+            errors.add("pack.identity.missing", _PACK_MANIFEST, key)
+    if pack.get("name") != os.path.basename(root):
+        errors.add("pack.identity.name-mismatch", _PACK_MANIFEST, "name")
+
+
+def _load_pack_manifest(
+    root_fd: int,
+    inventory: frozenset[str],
+    root: str,
+    limits: PackValidationLimits,
+    errors: _Errors,
+) -> dict[str, object] | None:
+    """Load and identity-check the required pack manifest."""
+
+    manifest: dict[str, object] | None = None
+    if _PACK_MANIFEST not in inventory:
+        errors.add("pack.missing", _PACK_MANIFEST)
+    else:
+        loaded = _load_yaml_member(root_fd, _PACK_MANIFEST, limits, errors)
+        if isinstance(loaded, dict):
+            manifest = loaded
+            _validate_pack_identity(manifest, root, errors)
+        elif loaded is not None:
+            errors.add("pack.type", _PACK_MANIFEST)
+    return manifest
+
+
+def _direct_sdl_documents(inventory: frozenset[str]) -> list[str]:
+    """Return sorted, direct SDL documents from the safe inventory."""
+
+    return sorted(
+        rel
+        for rel in inventory
+        if rel.startswith("sdl/")
+        and rel.count("/") == 1
+        and rel.endswith(".sdl.yaml")
+    )
+
+
+def _parse_sdl_document(
+    root_fd: int,
+    root: str,
+    rel: str,
+    limits: PackValidationLimits,
+    errors: _Errors,
+    *,
+    author_sdl: bool,
+) -> object | None:
+    """Parse one bounded SDL document through the selected ACES entry point."""
+
+    scenario: object | None = None
+    try:
+        raw = _pack_fs.read_member_bytes(
+            root_fd, rel, max_bytes=limits.max_sdl_bytes
+        )
+        text = raw.decode("utf-8", errors="strict")
+        if author_sdl:
+            scenario = parse_sdl_file(Path(root, *rel.split("/")), limits=limits.sdl)
+        else:
+            scenario = parse_sdl(text, limits=limits.sdl)
+    except UnicodeDecodeError:
+        errors.add("sdl.invalid-utf8", rel)
+    except SDLError as exc:
+        if not author_sdl and "imports require file-backed parsing" in str(exc):
+            errors.add("sdl.imports-denied", rel)
+        else:
+            errors.add("sdl.invalid", rel)
+    except OSError:
+        errors.add(_FILESYSTEM_CHANGED, rel)
+    except _pack_fs.PackFilesystemError as exc:
+        if str(exc) == "pack metadata exceeds the validation limit":
+            errors.add("resource.sdl-limit", rel)
+        else:
+            errors.add(_FILESYSTEM_CHANGED, rel)
+    return scenario
+
+
+def _validate_sdl_documents(
+    root_fd: int,
+    root: str,
+    inventory: frozenset[str],
+    limits: PackValidationLimits,
+    errors: _Errors,
+    *,
+    author_sdl: bool,
+) -> tuple[object, ...]:
+    """Validate every direct SDL document and retain successful scenarios."""
+
+    documents = _direct_sdl_documents(inventory)
+    if not documents:
+        errors.add("sdl.missing", "sdl")
+    parsed: list[object] = []
+    for rel in documents:
+        scenario = _parse_sdl_document(
+            root_fd, root, rel, limits, errors, author_sdl=author_sdl
+        )
+        if scenario is not None:
+            parsed.append(scenario)
+    return tuple(parsed)
+
+
 def _validate_pack_core(
     pack_root: str | os.PathLike[str],
     active: PackValidationLimits,
     *,
     author_sdl: bool,
 ) -> tuple[ValidationResult, tuple[object, ...]]:
+    """Run shared static validation and optionally retain parsed scenarios."""
+
     errors = _Errors(active)
     scenarios: tuple[object, ...] = ()
-    try:
-        root, root_fd = _pack_fs.open_root(pack_root)
-    except _pack_fs.PackFilesystemError:
-        errors.add("filesystem.invalid-root")
-        return errors.result(), scenarios
-    try:
+    opened = _open_validation_root(pack_root, errors)
+    if opened is not None:
+        root, root_fd = opened
         try:
-            members = _pack_fs.inventory(root_fd, max_members=active.max_members)
-        except _pack_fs.PackFilesystemError as exc:
-            if str(exc) == "pack member count exceeds the validation limit":
-                errors.add("resource.member-limit")
-            else:
-                errors.add("filesystem.unsafe-member")
-            return errors.result(), scenarios
-        inventory = frozenset(members)
-        if "pack.yaml" not in inventory:
-            errors.add("pack.missing", "pack.yaml")
-            return errors.result(), scenarios
-        pack = _load_yaml_member(root_fd, "pack.yaml", active, errors)
-        if not isinstance(pack, dict):
-            if pack is not None:
-                errors.add("pack.type", "pack.yaml")
-            return errors.result(), scenarios
-        for key in ("name", "title", "version"):
-            if not isinstance(pack.get(key), str) or not pack[key]:
-                errors.add("pack.identity.missing", "pack.yaml", key)
-        if pack.get("name") != os.path.basename(root):
-            errors.add("pack.identity.name-mismatch", "pack.yaml", "name")
-        _validate_provenance(root_fd, inventory, pack, active, errors)
-        _validate_compatibility(root_fd, inventory, pack, active, errors)
-
-        documents = sorted(
-            rel for rel in inventory
-            if rel.startswith("sdl/") and rel.count("/") == 1 and rel.endswith(".sdl.yaml")
-        )
-        if not documents:
-            errors.add("sdl.missing", "sdl")
-        parsed: list[object] = []
-        for rel in documents:
-            try:
-                raw = _pack_fs.read_member_bytes(
-                    root_fd, rel, max_bytes=active.max_sdl_bytes
-                )
-                text = raw.decode("utf-8", errors="strict")
-                if author_sdl:
-                    scenario = parse_sdl_file(
-                        Path(root, *rel.split("/")), limits=active.sdl
+            inventory = _safe_inventory(root_fd, active, errors)
+            if inventory is not None:
+                pack = _load_pack_manifest(root_fd, inventory, root, active, errors)
+                if pack is not None:
+                    _validate_provenance(root_fd, inventory, pack, active, errors)
+                    _validate_compatibility(root_fd, inventory, pack, active, errors)
+                    scenarios = _validate_sdl_documents(
+                        root_fd,
+                        root,
+                        inventory,
+                        active,
+                        errors,
+                        author_sdl=author_sdl,
                     )
-                else:
-                    scenario = parse_sdl(text, limits=active.sdl)
-                parsed.append(scenario)
-            except UnicodeDecodeError:
-                errors.add("sdl.invalid-utf8", rel)
-            except SDLError as exc:
-                if not author_sdl and "imports require file-backed parsing" in str(exc):
-                    errors.add("sdl.imports-denied", rel)
-                else:
-                    errors.add("sdl.invalid", rel)
-            except OSError:
-                errors.add("filesystem.changed", rel)
-            except _pack_fs.PackFilesystemError as exc:
-                if str(exc) == "pack metadata exceeds the validation limit":
-                    errors.add("resource.sdl-limit", rel)
-                else:
-                    errors.add("filesystem.changed", rel)
-        scenarios = tuple(parsed)
-        return errors.result(), scenarios
-    finally:
-        os.close(root_fd)
+        finally:
+            os.close(root_fd)
+    return errors.result(), scenarios
 
 
 def validate_pack(

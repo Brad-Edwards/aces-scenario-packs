@@ -51,10 +51,12 @@ from collections.abc import Callable, Iterator
 import yaml
 
 from aces_scenario_packs.validation import (
-    CONTENT_SAFETY_FLAGS,
+    CONTENT_SAFETY_FLAGS as _SHARED_CONTENT_SAFETY_FLAGS,
     _schema_violations,
     _validate_pack_for_author_ci,
 )
+
+CONTENT_SAFETY_FLAGS = _SHARED_CONTENT_SAFETY_FLAGS
 
 # Canonical contract resources ship inside this installed package (schemas,
 # template, oracle fixtures + model). They are resolved relative to the package,
@@ -125,7 +127,7 @@ def provenance_example_path() -> str:
 SKIP = {"_template", "_oracle"}
 
 
-class _AuthorStaticView:
+class _AuthorStaticView(object):
     """One shared per-pack static-validation snapshot for author-CI adapters."""
 
     __slots__ = (
@@ -312,29 +314,31 @@ def _author_provenance_failure(pack: str, code: str, detail: str) -> str:
     """Render one shared provenance code for author CI."""
 
     if code == "provenance.pointer.missing":
-        return (
+        failure = (
             f"provenance ledger MISSING: scenarios/{pack}/{PACK_MANIFEST_FILE} "
             "has no provenance_ledger pointer"
         )
-    if code == "provenance.pointer.invalid":
-        return (
+    elif code == "provenance.pointer.invalid":
+        failure = (
             f"provenance ledger INVALID: {pack}: provenance_ledger path "
             "escapes pack root"
         )
-    if code == "provenance.missing":
-        return f"provenance ledger MISSING: scenarios/{pack}/{detail}"
-    if code == "provenance.name-mismatch":
-        return f"provenance ledger INVALID: {pack}: pack name mismatch"
-    if code == "provenance.safety.required":
+    elif code == "provenance.missing":
+        failure = f"provenance ledger MISSING: scenarios/{pack}/{detail}"
+    elif code == "provenance.name-mismatch":
+        failure = f"provenance ledger INVALID: {pack}: pack name mismatch"
+    elif code == "provenance.safety.required":
         field = detail.rsplit(":", 1)[-1]
-        return f"provenance ledger INVALID: {pack}: {field} must be true"
-    if code == "provenance.review-gate.missing":
+        failure = f"provenance ledger INVALID: {pack}: {field} must be true"
+    elif code == "provenance.review-gate.missing":
         gate = detail.rsplit(".", 1)[-1]
-        return (
+        failure = (
             f"provenance ledger INVALID: {pack}: review.gates missing required "
             f"gate {gate}"
         )
-    return f"provenance ledger INVALID: scenarios/{pack}/{detail}: {code}"
+    else:
+        failure = f"provenance ledger INVALID: scenarios/{pack}/{detail}: {code}"
+    return failure
 
 
 def _partition_author_static_error(
@@ -816,9 +820,32 @@ def _check_duplicate_ids(manifest: dict[str, object], failures: list[str], pack:
             seen.add(value)
 
 
-def _validate_compatibility_manifest(pack: str, pack_yaml: dict[str, object],
-                                     failures: list[str],
-                                     static_view: _AuthorStaticView | None = None) -> None:
+def _referenced_compatibility_manifest(
+    pack_root: str,
+    pack_yaml: dict[str, object],
+    failures: list[str],
+) -> dict[str, object] | None:
+    """Load a contained, existing compatibility manifest for author joins."""
+
+    manifest: dict[str, object] | None = None
+    rel = pack_yaml.get("compatibility_manifest")
+    if isinstance(rel, str) and _path_inside_pack(pack_root, rel):
+        manifest_path = os.path.join(pack_root, rel)
+        if os.path.isfile(manifest_path):
+            loaded = _load_yaml(
+                manifest_path, failures, COMPATIBILITY_MANIFEST_LABEL
+            )
+            if isinstance(loaded, dict):
+                manifest = loaded
+    return manifest
+
+
+def _validate_compatibility_manifest(
+    pack: str,
+    pack_yaml: dict[str, object],
+    failures: list[str],
+    static_view: _AuthorStaticView | None = None,
+) -> None:
     """Delegate compatibility shape checks, then run author-only deep joins."""
     pack_root = os.path.join(SCEN, pack)
     report_static = static_view is None
@@ -826,16 +853,8 @@ def _validate_compatibility_manifest(pack: str, pack_yaml: dict[str, object],
     if report_static:
         failures.extend(view.manifest_failures)
 
-    rel = pack_yaml.get("compatibility_manifest")
-    if rel is None:
-        return
-    if not isinstance(rel, str) or not _path_inside_pack(pack_root, rel):
-        return
-    manifest_path = os.path.join(pack_root, rel)
-    if not os.path.isfile(manifest_path):
-        return
-    manifest = _load_yaml(manifest_path, failures, COMPATIBILITY_MANIFEST_LABEL)
-    if not isinstance(manifest, dict):
+    manifest = _referenced_compatibility_manifest(pack_root, pack_yaml, failures)
+    if manifest is None:
         return
 
     manifest_name = _get_nested(manifest, "pack.name")

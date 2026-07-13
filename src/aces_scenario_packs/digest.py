@@ -94,6 +94,17 @@ def _normalize_relpath(value: str) -> str:
     return _pack_fs.normalize_relpath(value, error_type=PackDigestError)
 
 
+def _descriptor_flags() -> _pack_fs.DescriptorFlags:
+    """Return filesystem flags while preserving digest test overrides."""
+
+    return _pack_fs.DescriptorFlags(
+        nofollow=_NOFOLLOW,
+        directory=_DIRECTORY,
+        nonblock=_NONBLOCK,
+        binary=_BINARY,
+    )
+
+
 def _is_cache_path(parts: tuple[str, ...]) -> bool:
     """Return whether path components identify the excluded ACES cache tree."""
 
@@ -109,8 +120,7 @@ def _inventory(root_fd: int, excluded: str) -> tuple[str, ...]:
         excluded_paths=frozenset({excluded}),
         excluded_prefixes=(_CACHE_PREFIX,),
         error_type=PackDigestError,
-        nofollow=_NOFOLLOW,
-        directory=_DIRECTORY,
+        flags=_descriptor_flags(),
     )
 
 
@@ -118,8 +128,10 @@ def _open_member(root_fd: int, rel: str) -> int:
     """Open one canonical pack member through no-follow directory descriptors."""
 
     return _pack_fs.open_member(
-        root_fd, rel, error_type=PackDigestError, nofollow=_NOFOLLOW,
-        directory=_DIRECTORY, nonblock=_NONBLOCK, binary=_BINARY,
+        root_fd,
+        rel,
+        error_type=PackDigestError,
+        flags=_descriptor_flags(),
     )
 
 
@@ -127,9 +139,11 @@ def _read_member_bytes(root_fd: int, rel: str, *, max_bytes: int) -> bytes:
     """Read bounded metadata bytes from one descriptor-anchored member."""
 
     return _pack_fs.read_member_bytes(
-        root_fd, rel, max_bytes=max_bytes, error_type=PackDigestError,
-        nofollow=_NOFOLLOW, directory=_DIRECTORY,
-        nonblock=_NONBLOCK, binary=_BINARY,
+        root_fd,
+        rel,
+        max_bytes=max_bytes,
+        error_type=PackDigestError,
+        flags=_descriptor_flags(),
     )
 
 

@@ -28,6 +28,23 @@ aces-pack-validate --repo .
 aces-pack-release check --all
 ```
 
+Consumers can validate one immutably staged pack in-process, without Git,
+subprocesses, or pack-local code:
+
+```python
+from aces_scenario_packs import validate_pack
+
+result = validate_pack(pack_root)
+if not result.ok:
+    reject(result.errors)
+```
+
+This checks the static ingest contract: pack identity, required provenance and
+safety/review policy, an optional referenced compatibility manifest, and direct
+SDL documents through ACES. Diagnostics contain bounded error codes and relative
+locations, never source bodies or absolute paths. See
+[Single-Pack Consumer Validation](docs/scenario-packs.md#single-pack-consumer-validation).
+
 ## What's here
 
 - **Definition**

@@ -15,6 +15,7 @@ from .digest import (
     validate_pack_content_manifest,
     verify_pack_content_digest,
 )
+from .validation import PackValidationLimits, ValidationResult, validate_pack
 
 # The version lives in pyproject.toml ([project].version), bumped by release-please
 # (ADR 0008); __version__ derives from the installed package metadata.
@@ -23,8 +24,11 @@ __version__ = version("aces-scenario-packs")
 __all__ = [
     "__version__",
     "PackDigestError",
+    "PackValidationLimits",
+    "ValidationResult",
     "derive_pack_content_manifest",
     "pack_content_digest",
     "validate_pack_content_manifest",
+    "validate_pack",
     "verify_pack_content_digest",
 ]

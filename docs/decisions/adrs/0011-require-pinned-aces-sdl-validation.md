@@ -15,7 +15,7 @@ start-state node, but the validator does not enforce that join.
 ACES publishes the `aces-sdl` package as the authority for SDL structural and
 semantic validation. Its public `parse_sdl_file()` API returns the validated
 `Scenario`, including the resolved `nodes` mapping and non-fatal advisories. The
-current published line is `0.19.1`, declares Python `>=3.11`, and the ACES SDL
+current published line is `0.20.0`, declares Python `>=3.11`, and the ACES SDL
 contracts remain draft. Making ACES optional would leave the package's required
 content unchecked in ordinary installations and would not satisfy the
 fail-closed pack contract.
@@ -23,8 +23,9 @@ fail-closed pack contract.
 ## Decision
 
 `aces-sdl` is a mandatory, exactly pinned runtime dependency while the upstream
-SDL contracts are draft. The initial pin is `aces-sdl==0.19.1`; advancing it
-requires compatibility tests against this package's validator and template.
+SDL contracts are draft. The initial pin was `aces-sdl==0.19.1`; issue 95
+advances it to `aces-sdl==0.20.0` after compatibility tests against this
+package's validator and template.
 The package's Python requirement follows the pinned ACES requirement, currently
 Python `>=3.11`. A compatible version range may replace the exact pin only after
 ACES publishes a stability and compatibility guarantee that justifies it.

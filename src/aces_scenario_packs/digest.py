@@ -48,6 +48,15 @@ _DIRECTORY = getattr(os, "O_DIRECTORY", 0)
 _NONBLOCK = getattr(os, "O_NONBLOCK", 0)
 _BINARY = getattr(os, "O_BINARY", 0)
 
+_PackContext = tuple[
+    int,
+    str,
+    AssociatedArtifactManifestModel,
+    tuple[str, ...],
+    dict[str, str],
+    tuple[object, ...],
+]
+
 
 class PackDigestError(ValueError):
     """The pack cannot produce or verify one conforming ACES set identity.
@@ -63,11 +72,15 @@ class PackDigestError(ValueError):
 
 
 def _require_descriptor_platform() -> None:
+    """Fail unless the host supports descriptor-anchored, no-follow reads."""
+
     if not _NOFOLLOW or not _DIRECTORY or os.open not in os.supports_dir_fd or os.stat not in os.supports_dir_fd:
         raise PackDigestError("descriptor-anchored pack reads are unsupported on this platform")
 
 
 def _open_root(pack_root: str | os.PathLike[str]) -> tuple[str, int]:
+    """Open and return one canonical pack root plus its directory descriptor."""
+
     _require_descriptor_platform()
     root = os.fspath(pack_root)
     if not root:
@@ -88,6 +101,8 @@ def _open_root(pack_root: str | os.PathLike[str]) -> tuple[str, int]:
 
 
 def _normalize_component(name: str) -> str:
+    """Return a canonical UTF-8 NFC path component or fail closed."""
+
     normalized = unicodedata.normalize("NFC", name)
     if name != normalized or not name or name in {".", ".."} or "/" in name or "\\" in name:
         raise PackDigestError("pack member name is not canonical")
@@ -99,6 +114,8 @@ def _normalize_component(name: str) -> str:
 
 
 def _normalize_relpath(value: str) -> str:
+    """Return a canonical slash-separated path relative to the pack root."""
+
     if not isinstance(value, str) or not value or os.path.isabs(value) or "\\" in value:
         raise PackDigestError("pack-relative path is not canonical")
     parts = value.split("/")
@@ -109,7 +126,78 @@ def _normalize_relpath(value: str) -> str:
 
 
 def _is_cache_path(parts: tuple[str, ...]) -> bool:
+    """Return whether path components identify the excluded ACES cache tree."""
+
     return parts[: len(_CACHE_PREFIX)] == _CACHE_PREFIX
+
+
+def _directory_names(directory_fd: int) -> list[str]:
+    """Return deterministic child names for an opened pack directory."""
+
+    try:
+        return sorted(os.listdir(directory_fd))
+    except OSError as exc:
+        raise PackDigestError("pack directory could not be traversed") from exc
+
+
+def _member_path(
+    raw_name: str,
+    prefix: tuple[str, ...],
+    seen_casefold: dict[str, str],
+) -> tuple[str, tuple[str, ...], str]:
+    """Canonicalize and collision-check one member path."""
+
+    name = _normalize_component(raw_name)
+    parts = (*prefix, name)
+    rel = "/".join(parts)
+    folded = rel.casefold()
+    prior = seen_casefold.get(folded)
+    if prior is not None and prior != rel:
+        raise PackDigestError("pack contains a case-insensitive path collision")
+    seen_casefold[folded] = rel
+    return name, parts, rel
+
+
+def _member_stat(directory_fd: int, name: str) -> os.stat_result:
+    """Inspect one child without following links."""
+
+    try:
+        return os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+    except OSError as exc:
+        raise PackDigestError("pack member could not be inspected") from exc
+
+
+def _walk_member(
+    directory_fd: int,
+    name: str,
+    parts: tuple[str, ...],
+    rel: str,
+    excluded: str,
+    seen_casefold: dict[str, str],
+) -> Iterator[str]:
+    """Yield payload paths contributed by one inspected directory member."""
+
+    member_stat = _member_stat(directory_fd, name)
+    if stat.S_ISLNK(member_stat.st_mode):
+        raise PackDigestError("pack contains a symlink")
+    if stat.S_ISDIR(member_stat.st_mode):
+        if _is_cache_path(parts):
+            return
+        try:
+            child_fd = os.open(name, os.O_RDONLY | _DIRECTORY | _NOFOLLOW, dir_fd=directory_fd)
+        except OSError as exc:
+            raise PackDigestError("pack directory could not be opened") from exc
+        try:
+            yield from _walk_directory(child_fd, parts, excluded, seen_casefold)
+        finally:
+            os.close(child_fd)
+        return
+    if not stat.S_ISREG(member_stat.st_mode):
+        raise PackDigestError("pack contains a non-regular file")
+    if member_stat.st_nlink > 1:
+        raise PackDigestError("pack contains a multiply-linked file")
+    if rel != excluded:
+        yield rel
 
 
 def _walk_directory(
@@ -118,46 +206,16 @@ def _walk_directory(
     excluded: str,
     seen_casefold: dict[str, str],
 ) -> Iterator[str]:
-    try:
-        names = sorted(os.listdir(directory_fd))
-    except OSError as exc:
-        raise PackDigestError("pack directory could not be traversed") from exc
-    for raw_name in names:
-        name = _normalize_component(raw_name)
-        parts = (*prefix, name)
-        rel = "/".join(parts)
-        folded = rel.casefold()
-        prior = seen_casefold.get(folded)
-        if prior is not None and prior != rel:
-            raise PackDigestError("pack contains a case-insensitive path collision")
-        seen_casefold[folded] = rel
-        try:
-            member_stat = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
-        except OSError as exc:
-            raise PackDigestError("pack member could not be inspected") from exc
-        if stat.S_ISLNK(member_stat.st_mode):
-            raise PackDigestError("pack contains a symlink")
-        if stat.S_ISDIR(member_stat.st_mode):
-            if _is_cache_path(parts):
-                continue
-            try:
-                child_fd = os.open(name, os.O_RDONLY | _DIRECTORY | _NOFOLLOW, dir_fd=directory_fd)
-            except OSError as exc:
-                raise PackDigestError("pack directory could not be opened") from exc
-            try:
-                yield from _walk_directory(child_fd, parts, excluded, seen_casefold)
-            finally:
-                os.close(child_fd)
-            continue
-        if not stat.S_ISREG(member_stat.st_mode):
-            raise PackDigestError("pack contains a non-regular file")
-        if member_stat.st_nlink > 1:
-            raise PackDigestError("pack contains a multiply-linked file")
-        if rel != excluded:
-            yield rel
+    """Yield a deterministic, safe inventory below one opened directory."""
+
+    for raw_name in _directory_names(directory_fd):
+        name, parts, rel = _member_path(raw_name, prefix, seen_casefold)
+        yield from _walk_member(directory_fd, name, parts, rel, excluded, seen_casefold)
 
 
 def _inventory(root_fd: int, excluded: str) -> tuple[str, ...]:
+    """Return the bounded exact payload inventory below an opened pack root."""
+
     members = tuple(_walk_directory(root_fd, (), excluded, {}))
     if len(members) > _MAX_PACK_MEMBERS:
         raise PackDigestError("pack member count exceeds the validation limit")
@@ -165,6 +223,8 @@ def _inventory(root_fd: int, excluded: str) -> tuple[str, ...]:
 
 
 def _open_member(root_fd: int, rel: str) -> int:
+    """Open one canonical pack member through no-follow directory descriptors."""
+
     parts = _normalize_relpath(rel).split("/")
     current_fd = os.dup(root_fd)
     try:
@@ -187,6 +247,8 @@ def _open_member(root_fd: int, rel: str) -> int:
 
 
 def _read_member_bytes(root_fd: int, rel: str, *, max_bytes: int) -> bytes:
+    """Read bounded metadata bytes from one descriptor-anchored member."""
+
     fd = _open_member(root_fd, rel)
     chunks: list[bytes] = []
     try:
@@ -203,7 +265,7 @@ def _read_member_bytes(root_fd: int, rel: str, *, max_bytes: int) -> bytes:
     return b"".join(chunks)
 
 
-class _DescriptorReader:
+class _DescriptorReader(object):
     """Lazy, no-follow reader so ACES opens only the payload being validated."""
 
     def __init__(self, root_fd: int, rel: str) -> None:
@@ -235,6 +297,8 @@ class _DescriptorReader:
 
 
 def _pack_uri_to_rel(uri: str, excluded: str) -> str:
+    """Resolve one canonical pack URI to a safe root-relative payload path."""
+
     parsed = urlsplit(uri)
     if (
         parsed.scheme != _PACK_URI_SCHEME
@@ -246,7 +310,7 @@ def _pack_uri_to_rel(uri: str, excluded: str) -> str:
         raise PackDigestError("associated artifact URI is not a canonical pack locator")
     try:
         rel = unquote_to_bytes(parsed.path[1:]).decode("utf-8", errors="strict")
-    except (UnicodeDecodeError, ValueError) as exc:
+    except ValueError as exc:
         raise PackDigestError("associated artifact URI is not valid UTF-8") from exc
     rel = _normalize_relpath(rel)
     canonical = f"{_PACK_URI_SCHEME}:/{quote(rel, safe='/-._~')}"
@@ -256,6 +320,8 @@ def _pack_uri_to_rel(uri: str, excluded: str) -> str:
 
 
 def _load_pack_metadata(root_fd: int) -> tuple[str, str, str]:
+    """Load the pack identity and associated-artifact manifest pointer."""
+
     try:
         payload = yaml.safe_load(
             _read_member_bytes(root_fd, _PACK_MANIFEST, max_bytes=_MAX_PACK_YAML_BYTES).decode("utf-8")
@@ -275,6 +341,8 @@ def _load_pack_metadata(root_fd: int) -> tuple[str, str, str]:
 
 
 def _load_manifest(root_fd: int, manifest_rel: str) -> AssociatedArtifactManifestModel:
+    """Load a bounded manifest through ACES's strict JSON parser."""
+
     try:
         return load_associated_artifact_manifest_json(
             _read_member_bytes(root_fd, manifest_rel, max_bytes=_MAX_MANIFEST_BYTES)
@@ -288,6 +356,8 @@ def _load_manifest(root_fd: int, manifest_rel: str) -> AssociatedArtifactManifes
 def _validate_pack_manifest_identity(
     manifest: AssociatedArtifactManifestModel, name: str, version: str
 ) -> None:
+    """Require the scenario-scoped manifest identity to match its pack."""
+
     if (
         manifest.scope != "scenario"
         or manifest.parent_ref.ref_id != name
@@ -298,6 +368,8 @@ def _validate_pack_manifest_identity(
 
 
 def _artifact_paths(manifest: AssociatedArtifactManifestModel, excluded: str) -> dict[str, str]:
+    """Map opaque artifact ids to validated pack-relative payload paths."""
+
     paths: dict[str, str] = {}
     for artifact_id, artifact in manifest.artifacts.items():
         if artifact.checksum.algorithm != "sha256":
@@ -307,7 +379,13 @@ def _artifact_paths(manifest: AssociatedArtifactManifestModel, excluded: str) ->
 
 
 def _parse_parent_candidates(root: str, inventory: tuple[str, ...]) -> tuple[object, ...]:
-    sdl_docs = [rel for rel in inventory if rel.startswith("sdl/") and rel.count("/") == 1 and rel.endswith(".sdl.yaml")]
+    """Parse every direct SDL document that may satisfy the manifest parent."""
+
+    sdl_docs = [
+        rel
+        for rel in inventory
+        if rel.startswith("sdl/") and rel.count("/") == 1 and rel.endswith(".sdl.yaml")
+    ]
     if not sdl_docs:
         raise PackDigestError("pack has no direct SDL parent document")
     candidates: list[object] = []
@@ -320,6 +398,8 @@ def _parse_parent_candidates(root: str, inventory: tuple[str, ...]) -> tuple[obj
 
 
 def _reader_map(root_fd: int, paths: Mapping[str, str]) -> dict[str, _DescriptorReader]:
+    """Build lazy descriptor readers keyed by opaque manifest artifact id."""
+
     return {artifact_id: _DescriptorReader(root_fd, rel) for artifact_id, rel in paths.items()}
 
 
@@ -330,6 +410,8 @@ def _validate_with_parent_candidates(
     paths: Mapping[str, str],
     limits: AssociatedArtifactValidationLimits | None,
 ) -> None:
+    """Validate bytes against each candidate, retaining ACES's best diagnostics."""
+
     best: tuple[Diagnostic, ...] = ()
     for parent in candidates:
         readers = _reader_map(root_fd, paths)
@@ -353,7 +435,9 @@ def _validate_with_parent_candidates(
 
 
 @contextmanager
-def _pack_context(pack_root: str | os.PathLike[str]):
+def _pack_context(pack_root: str | os.PathLike[str]) -> Iterator[_PackContext]:
+    """Open and validate pack-owned projection data for one identity operation."""
+
     root, root_fd = _open_root(pack_root)
     try:
         name, version, manifest_rel = _load_pack_metadata(root_fd)
@@ -375,6 +459,8 @@ def _derived_manifest(
     paths: Mapping[str, str],
     limits: AssociatedArtifactValidationLimits | None,
 ) -> AssociatedArtifactManifestModel:
+    """Recompute payload checksums, sizes, and ACES set identity from bytes."""
+
     active_limits = limits or AssociatedArtifactValidationLimits()
     if len(manifest.artifacts) > active_limits.max_artifacts:
         raise PackDigestError("artifact count exceeds the derivation limit")

@@ -89,6 +89,13 @@ def _write_declared_manifest(root: Path, *, mutate: object | None = None) -> Non
     )
 
 
+def _refresh_manifest(root: Path) -> None:
+    model = derive_pack_content_manifest(root)
+    (root / "associated-artifacts.json").write_text(
+        model.model_dump_json(indent=2) + "\n", encoding="utf-8"
+    )
+
+
 class PackFixture(unittest.TestCase):
     def setUp(self) -> None:
         self.root = Path(tempfile.mkdtemp())
@@ -102,13 +109,6 @@ class PackFixture(unittest.TestCase):
         _write(self.root, "sdl/example.sdl.yaml", _VALID_SDL.encode())
         _write(self.root, "docs/guide.md", b"operator guide\n")
         _write_declared_manifest(self.root)
-
-    def refresh(self) -> None:
-        model = derive_pack_content_manifest(self.root)
-        (self.root / "associated-artifacts.json").write_text(
-            model.model_dump_json(indent=2) + "\n", encoding="utf-8"
-        )
-
 
 class DerivationTests(PackFixture):
     def test_derives_the_declared_aces_manifest(self):
@@ -139,7 +139,7 @@ class DerivationTests(PackFixture):
 
     def test_refresh_makes_changed_pack_valid_again(self):
         _write(self.root, "docs/guide.md", b"changed guide\n")
-        self.refresh()
+        _refresh_manifest(self.root)
         self.assertEqual(pack_content_digest(self.root), validate_pack_content_manifest(self.root).set_digest)
 
     def test_module_cache_is_not_part_of_inventory(self):

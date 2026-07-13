@@ -54,7 +54,7 @@ class PackValidationFixture(unittest.TestCase):
     def validate(self, **kwargs: object) -> ValidationResult:
         return validate_pack(self.root, **kwargs)
 
-    def pack_yaml(self) -> dict[str, object]:
+    def _pack_yaml(self) -> dict[str, object]:
         return yaml.safe_load((self.root / "pack.yaml").read_text(encoding="utf-8"))
 
     def _write_pack_yaml(self, value: dict[str, object]) -> None:
@@ -90,7 +90,7 @@ class PublicValidationTests(PackValidationFixture):
         self.assertIn("pack.identity.missing: pack.yaml:version", incomplete.errors)
 
     def test_pack_name_must_match_directory(self) -> None:
-        pack = self.pack_yaml()
+        pack = self._pack_yaml()
         pack["name"] = "different-pack"
         self._write_pack_yaml(pack)
         result = self.validate()
@@ -100,7 +100,7 @@ class PublicValidationTests(PackValidationFixture):
 
 class ProvenanceValidationTests(PackValidationFixture):
     def test_provenance_pointer_is_required_and_contained(self) -> None:
-        pack = self.pack_yaml()
+        pack = self._pack_yaml()
         del pack["provenance_ledger"]
         self._write_pack_yaml(pack)
         self.assertIn(
@@ -120,7 +120,7 @@ class ProvenanceValidationTests(PackValidationFixture):
             self.root / "docs" / "provenance-ledger.yaml",
             self.root / "docs" / "alternate.yaml",
         )
-        pack = self.pack_yaml()
+        pack = self._pack_yaml()
         pack["provenance_ledger"] = "docs/alternate.yaml"
         self._write_pack_yaml(pack)
         self.assertIn(
@@ -160,7 +160,7 @@ class ProvenanceValidationTests(PackValidationFixture):
 
 class CompatibilityValidationTests(PackValidationFixture):
     def test_unreferenced_compatibility_manifest_is_optional(self) -> None:
-        pack = self.pack_yaml()
+        pack = self._pack_yaml()
         del pack["compatibility_manifest"]
         self._write_pack_yaml(pack)
         (self.root / "pack.compatibility.yaml").unlink()

@@ -269,20 +269,27 @@ def _schema_violations(
     if ref is not None:
         resolved = _resolve_ref(root_schema, str(ref))
         if resolved is None:
-            return [_SchemaViolation("ref", path)]
-        return _schema_violations(value, resolved, root_schema, path)
-
-    expected = _expected_types(schema)
-    if expected is not None and not any(
-        _SCHEMA_TYPE_CHECKS.get(name, lambda _value: True)(value)
-        for name in expected
-    ):
-        return [_SchemaViolation("type", path)]
-    violations = _schema_value_violations(value, schema, path)
-    if isinstance(value, dict):
-        violations.extend(_schema_object_violations(value, schema, root_schema, path))
-    elif isinstance(value, list):
-        violations.extend(_schema_array_violations(value, schema, root_schema, path))
+            violations = [_SchemaViolation("ref", path)]
+        else:
+            violations = _schema_violations(value, resolved, root_schema, path)
+    else:
+        expected = _expected_types(schema)
+        type_mismatch = expected is not None and not any(
+            _SCHEMA_TYPE_CHECKS.get(name, lambda _value: True)(value)
+            for name in expected
+        )
+        if type_mismatch:
+            violations = [_SchemaViolation("type", path)]
+        else:
+            violations = _schema_value_violations(value, schema, path)
+            if isinstance(value, dict):
+                violations.extend(
+                    _schema_object_violations(value, schema, root_schema, path)
+                )
+            elif isinstance(value, list):
+                violations.extend(
+                    _schema_array_violations(value, schema, root_schema, path)
+                )
     return violations
 
 

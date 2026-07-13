@@ -11,6 +11,13 @@ this file at release-prep. See [`changelog.d/README.md`](changelog.d/README.md).
 
 <!-- towncrier release notes start -->
 
+## [1.1.0](https://github.com/Brad-Edwards/aces-scenario-packs/compare/v1.0.0...v1.1.0) (2026-07-13)
+
+
+### Features
+
+* consume ACES associated-artifact manifests ([#98](https://github.com/Brad-Edwards/aces-scenario-packs/issues/98)) ([2b3f730](https://github.com/Brad-Edwards/aces-scenario-packs/commit/2b3f730d491c8a0e67828ede39912e31ec1010f7))
+
 ## [1.0.0](https://github.com/Brad-Edwards/aces-scenario-packs/compare/v0.1.0...v1.0.0) (2026-07-12)
 
 

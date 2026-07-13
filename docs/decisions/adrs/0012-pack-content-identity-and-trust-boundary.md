@@ -84,10 +84,9 @@ policy.
 
 This adds a portable manifest/pointer and advances the scenario-pack contract
 content version to `2`. The package dependency remains exactly pinned while
-ACES contracts are draft. This change cannot merge or publish until an ACES
-release contains ADR-077's model, schema corpus, and validator; local development
-may use the merged upstream `dev` worktree, but the final gate installs the
-published wheel.
+ACES contracts are draft. ACES `0.20.0` publishes ADR-077's model, schema
+corpus, and validator; the final gate installs that published distribution
+rather than relying on an upstream development worktree.
 
 ## Consequences
 

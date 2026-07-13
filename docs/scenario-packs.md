@@ -41,7 +41,7 @@ document ACES rejects. SDL is validated *through ACES* — no SDL schema is
 restated here, and the local JSON-Schema subset validator never touches SDL.
 
 `aces-sdl` is therefore a hard, exactly-pinned runtime dependency
-(`aces-sdl==0.19.1`) rather than an optional one: the gate is fail-closed, so an
+(`aces-sdl==0.20.0`) rather than an optional one: the gate is fail-closed, so an
 optional coupling that skipped SDL when ACES was absent would leave every pack's
 most important content unchecked. The exact pin is deliberate while ACES SDL
 contracts are `stability: draft`; advancing it requires compatibility tests. This

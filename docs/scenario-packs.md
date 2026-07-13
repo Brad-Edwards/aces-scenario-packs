@@ -54,6 +54,52 @@ least one validated SDL document in the pack (the union across a pack's full and
 reduced start-state variants). Only `flags[].host` is checked; no SDL reference
 is inferred from prose, filenames, or arbitrary keys.
 
+## Single-Pack Consumer Validation
+
+`aces-pack-validate` is the author-CI surface for a catalog checkout. A consumer
+ingesting one pack uses the public library boundary instead:
+
+```python
+from aces_scenario_packs import PackValidationLimits, validate_pack
+
+result = validate_pack(
+    staged_pack,
+    limits=PackValidationLimits(max_metadata_bytes=512 * 1024),
+)
+```
+
+`ValidationResult.ok` is true when `errors` is empty. Each error is a bounded,
+body-free code with at most a canonical pack-relative filename and field path.
+The function is silent and does not read environment configuration, invoke Git
+or subprocesses, execute pack code, log, write caches, or mutate process globals.
+
+The consumer contract checks:
+
+- `pack.yaml` and its `name`, `title`, and `version` identity fields, including
+  agreement between the pack name and staging-directory name;
+- the required referenced provenance ledger against the packaged schema,
+  matching pack name, all-true content-safety attestations, and required review
+  gates;
+- the referenced compatibility manifest, when present, against the packaged
+  schema; and
+- every direct `sdl/*.sdl.yaml` document through the pinned ACES parser.
+
+The boundary inventory and reads are descriptor-anchored and no-follow.
+Non-canonical paths, escaping pointers, symlinks, hardlinks, special files,
+duplicate YAML keys, invalid UTF-8, and resource-limit violations fail closed.
+Callers must acquire and immutably stage the directory before validation, then
+promote those same bytes.
+
+ACES 0.20 does not expose a resolver-policy seam for file-backed SDL parsing.
+The consumer API therefore parses supplied SDL content without a file context;
+an SDL document containing imports fails with `sdl.imports-denied` instead of
+performing network I/O or writing `sdl/.aces/module-cache`. The author CLI keeps
+file-backed parsing under its separately controlled environment. Catalog
+discovery, pack validators/tests, leak scanning, flag-placement joins, release
+readiness, and content-manifest verification are outside this consumer API.
+
+See [ADR 0013](decisions/adrs/0013-separate-consumer-static-validation-from-author-ci.md).
+
 ## Status Meanings
 
 - `draft`: design/source only; the full live scenario is not stood up.
@@ -95,7 +141,8 @@ The compatibility manifest separates:
 
 It carries **zero extensions to ACES semantics**: scoring, validation-oracle,
 telemetry, and lifecycle (reset/rebuild/teardown) are ACES/runtime concerns and
-are deliberately not manifest layers ([ADR 0009](decisions/adrs/0009-scenario-packs-subordinate-to-aces.md)).
+are deliberately not manifest layers
+([ADR 0009](decisions/adrs/0009-scenario-packs-subordinate-to-aces.md)).
 
 The manifest indexes existing pack-local files. It is not a runtime engine,
 dependency lockfile, provider adapter, scoreboard, telemetry product, or proof

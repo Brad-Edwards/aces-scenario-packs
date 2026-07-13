@@ -20,6 +20,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 import yaml
 
@@ -808,6 +809,8 @@ class ProvenanceLedgerGateTest(unittest.TestCase):
         pack_yaml = {"name": self.PACK}
         if write_pointer:
             pack_yaml["provenance_ledger"] = pointer
+        with open(os.path.join(pack_root, "pack.yaml"), "w", encoding="utf-8") as fh:
+            yaml.safe_dump(pack_yaml, fh)
         return tmp, scen, pack_yaml
 
     def _run(self, ledger, **kw):
@@ -1019,6 +1022,18 @@ class SdlValidationGateTest(unittest.TestCase):
         pack = os.path.join(scen, "example-pack")
         sdl_dir = os.path.join(pack, "sdl")
         os.makedirs(sdl_dir, exist_ok=True)
+        with open(os.path.join(pack, "pack.yaml"), "w", encoding="utf-8") as fh:
+            fh.write(
+                "name: example-pack\n"
+                "title: Example Pack\n"
+                "version: 0.1.0\n"
+                "provenance_ledger: docs/provenance-ledger.yaml\n"
+            )
+        docs = os.path.join(pack, "docs")
+        os.makedirs(docs, exist_ok=True)
+        with open(os.path.join(docs, "provenance-ledger.yaml"), "w",
+                  encoding="utf-8") as fh:
+            yaml.safe_dump(_valid_ledger("example-pack"), fh)
         for name, body in (sdl or {}).items():
             with open(os.path.join(sdl_dir, name), "w", encoding="utf-8") as fh:
                 fh.write(body)
@@ -1035,7 +1050,8 @@ class SdlValidationGateTest(unittest.TestCase):
         CI.SCEN, CI._REPO = scen, tmp
         try:
             failures: list[str] = []
-            CI.check_sdl(failures)
+            views = CI.check_static_contract(failures)
+            CI.check_sdl(failures, views)
         finally:
             CI.SCEN, CI._REPO = orig_scen, orig_repo
         return failures
@@ -1090,6 +1106,28 @@ class SdlValidationGateTest(unittest.TestCase):
                                placement="flags: []\n")
         self.assertEqual(self._run(tmp, scen), [])
 
+    def test_author_adapters_share_one_static_validation_snapshot(self):
+        tmp, scen = self._pack(sdl={"example.sdl.yaml": _VALID_SDL})
+        orig_scen, orig_repo = CI.SCEN, CI._REPO
+        CI.SCEN, CI._REPO = scen, tmp
+        CI._AUTHOR_STATIC_CACHE.clear()
+        try:
+            failures: list[str] = []
+            with mock.patch.object(
+                CI,
+                "_validate_pack_for_author_ci",
+                wraps=CI._validate_pack_for_author_ci,
+            ) as validator:
+                views = CI.check_static_contract(failures)
+                CI.check_sdl(failures, views)
+                CI.check_manifest(failures, views)
+                CI.check_provenance(failures, views)
+            self.assertEqual(validator.call_count, 1)
+            self.assertEqual(failures, [])
+            self.assertTrue(views["example-pack"].scenarios)
+        finally:
+            CI.SCEN, CI._REPO = orig_scen, orig_repo
+
     def test_node_id_extraction_reads_scenario_nodes(self):
         class _FakeScenario:
             nodes = {"a": object(), "b": object()}
@@ -1108,8 +1146,7 @@ class SdlValidationGateTest(unittest.TestCase):
         os.symlink(outside, link)
 
         blob = "\n".join(self._run(tmp, scen))
-        self.assertIn("SDL INVALID", blob)
-        self.assertIn("path escapes pack root", blob)
+        self.assertIn("PACK STATIC INVALID", blob)
 
     def test_missing_aces_sdl_dependency_fails_closed(self):
         # A broken environment where the pinned dep is unimportable is a

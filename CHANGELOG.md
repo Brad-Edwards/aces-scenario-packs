@@ -11,6 +11,14 @@ this file at release-prep. See [`changelog.d/README.md`](changelog.d/README.md).
 
 <!-- towncrier release notes start -->
 
+## [1.2.0](https://github.com/Brad-Edwards/aces-scenario-packs/compare/v1.1.0...v1.2.0) (2026-07-13)
+
+
+### Features
+
+* add single-pack consumer validation API ([#104](https://github.com/Brad-Edwards/aces-scenario-packs/issues/104)) ([5d73177](https://github.com/Brad-Edwards/aces-scenario-packs/commit/5d73177640052c9f4c5f0afdc89c252c49a37937))
+* add single-pack consumer validation API ([#104](https://github.com/Brad-Edwards/aces-scenario-packs/issues/104)) ([fa1383d](https://github.com/Brad-Edwards/aces-scenario-packs/commit/fa1383d0161b0e38e288a04a2a2ff3c0f35f0f62))
+
 ## [1.1.0](https://github.com/Brad-Edwards/aces-scenario-packs/compare/v1.0.0...v1.1.0) (2026-07-13)
 
 

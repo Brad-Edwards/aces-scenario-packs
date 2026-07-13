@@ -167,6 +167,36 @@ def _member_stat(directory_fd: int, name: str) -> os.stat_result:
         raise PackDigestError("pack member could not be inspected") from exc
 
 
+def _walk_child_directory(
+    directory_fd: int,
+    name: str,
+    parts: tuple[str, ...],
+    excluded: str,
+    seen_casefold: dict[str, str],
+) -> Iterator[str]:
+    """Yield payloads below one non-cache child directory."""
+
+    if _is_cache_path(parts):
+        return
+    try:
+        child_fd = os.open(name, os.O_RDONLY | _DIRECTORY | _NOFOLLOW, dir_fd=directory_fd)
+    except OSError as exc:
+        raise PackDigestError("pack directory could not be opened") from exc
+    try:
+        yield from _walk_directory(child_fd, parts, excluded, seen_casefold)
+    finally:
+        os.close(child_fd)
+
+
+def _require_regular_payload(member_stat: os.stat_result) -> None:
+    """Require one inventory member to be a singly-linked regular file."""
+
+    if not stat.S_ISREG(member_stat.st_mode):
+        raise PackDigestError("pack contains a non-regular file")
+    if member_stat.st_nlink > 1:
+        raise PackDigestError("pack contains a multiply-linked file")
+
+
 def _walk_member(
     directory_fd: int,
     name: str,
@@ -181,23 +211,11 @@ def _walk_member(
     if stat.S_ISLNK(member_stat.st_mode):
         raise PackDigestError("pack contains a symlink")
     if stat.S_ISDIR(member_stat.st_mode):
-        if _is_cache_path(parts):
-            return
-        try:
-            child_fd = os.open(name, os.O_RDONLY | _DIRECTORY | _NOFOLLOW, dir_fd=directory_fd)
-        except OSError as exc:
-            raise PackDigestError("pack directory could not be opened") from exc
-        try:
-            yield from _walk_directory(child_fd, parts, excluded, seen_casefold)
-        finally:
-            os.close(child_fd)
-        return
-    if not stat.S_ISREG(member_stat.st_mode):
-        raise PackDigestError("pack contains a non-regular file")
-    if member_stat.st_nlink > 1:
-        raise PackDigestError("pack contains a multiply-linked file")
-    if rel != excluded:
-        yield rel
+        yield from _walk_child_directory(directory_fd, name, parts, excluded, seen_casefold)
+    else:
+        _require_regular_payload(member_stat)
+        if rel != excluded:
+            yield rel
 
 
 def _walk_directory(

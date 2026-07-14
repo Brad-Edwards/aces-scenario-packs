@@ -12,6 +12,7 @@ this repo does not host packs.
 
 - [Scenario packs — what a pack is](scenario-packs.md)
 - [Golden readiness](golden-readiness.md)
+- [Migration scrub policy](scrub-policy.md)
 - Layout contract, schemas, template, and shared oracle model ship as package
   data under `src/aces_scenario_packs/resources/`
   (`contract/pack-layout.md`, `schemas/`, `template/`, `oracle/`).

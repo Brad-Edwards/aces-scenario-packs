@@ -1,5 +1,5 @@
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://example.com/aces-scenario-pack/scenario-pack-provenance.schema.yaml"
+$id: "https://aces.dev/schemas/scenario-pack-provenance-v1.json"
 title: ACES scenario pack provenance ledger (pack-domain; trust deferred to ACES)
 description: >
   Machine-readable pack-domain ledger for a scenario pack's content ORIGIN &
@@ -65,8 +65,8 @@ required:
   - review
 properties:
   schema_version:
-    type: integer
-    const: 1
+    type: string
+    const: "scenario-pack-provenance/v1"
   pack:
     type: object
     additionalProperties: false

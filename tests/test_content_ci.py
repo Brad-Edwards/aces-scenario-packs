@@ -507,7 +507,7 @@ class CompatibilityManifestGateTest(unittest.TestCase):
 
     def _valid_manifest(self) -> str:
         return "\n".join([
-            "schema_version: 1",
+            "schema_version: scenario-pack-compatibility/v1",
             "pack:",
             "  name: example-pack",
             '  title: "Example Pack"',
@@ -724,7 +724,7 @@ class NewScenarioPackScriptTest(unittest.TestCase):
 def _valid_ledger(name: str = "testpack") -> dict:
     """A minimal ledger that satisfies the provenance schema + gate."""
     return {
-        "schema_version": 1,
+        "schema_version": "scenario-pack-provenance/v1",
         "pack": {"name": name},
         "sources": [
             {"source_id": "original-design", "kind": "original",

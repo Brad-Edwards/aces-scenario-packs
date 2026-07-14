@@ -75,7 +75,7 @@ def _make_pack(root: str, *, delivery_bundles, profile_bundles=False,
     _write(os.path.join(root, "pack.yaml"), yaml.safe_dump(pack_yaml))
 
     compat = {
-        "schema_version": 1,
+        "schema_version": "scenario-pack-compatibility/v1",
         "pack": {"name": "synthpack", "version": "0.1.0", "status": "draft"},
         "artifact_boundaries": boundaries if boundaries is not None else {
             "participant_visible": [{"path": "assets/briefing/", "export": "public"}],
@@ -91,7 +91,7 @@ def _make_pack(root: str, *, delivery_bundles, profile_bundles=False,
     _write(os.path.join(root, "assets", "briefing", "brief.md"), "# Mission brief\n")
 
     prov = {
-        "schema_version": 1,
+        "schema_version": "scenario-pack-provenance/v1",
         "pack": {"name": "synthpack"},
         "sources": [{"source_id": "orig", "kind": "original-design"}],
         "artifacts": [{"artifact_id": "a1", "path": "assets/", "classification": "open"}],

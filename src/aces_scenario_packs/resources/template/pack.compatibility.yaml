@@ -2,7 +2,7 @@
 # catalog/package consumers; it does not provision, score, observe, or run the
 # scenario. See ../pack-compatibility.schema.yaml.
 
-schema_version: 1
+schema_version: "scenario-pack-compatibility/v1"
 pack:
   name: <name>
   title: "Human-readable title"

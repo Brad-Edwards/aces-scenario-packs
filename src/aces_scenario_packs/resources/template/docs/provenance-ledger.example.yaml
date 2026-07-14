@@ -8,7 +8,7 @@
 # reusable-asset-trust-policy/v1 (ACES ADR-071); this ledger carries only the
 # pack-domain licensing/safety/publication facts ACES does not define
 # (ADR 0009/ADR 0010).
-schema_version: 1
+schema_version: "scenario-pack-provenance/v1"
 pack:
   name: example-commercial-pack
   title: "Example Commercial Pack"

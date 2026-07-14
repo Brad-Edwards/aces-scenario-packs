@@ -517,6 +517,24 @@ def matching_issue(existing_issues: list[dict[str, object]], title: str,
     return None
 
 
+def matching_template_issue(
+    existing_issues: list[dict[str, object]],
+    plan: PackPlan,
+    template: IssueTemplate,
+) -> dict[str, object] | None:
+    """Match a template's current title or any legacy title."""
+    suffixes = (template.suffix, *template.legacy_suffixes)
+    for suffix in suffixes:
+        found = matching_issue(
+            existing_issues,
+            f"{plan.pack_id}: {suffix}",
+            plan.milestone_number,
+        )
+        if found is not None:
+            return found
+    return None
+
+
 def build_operations(plan: PackPlan, existing_issues: list[dict[str, object]],
                      *, available_labels: set[str] | None = None,
                      refresh_existing: bool = False,
@@ -532,14 +550,7 @@ def build_operations(plan: PackPlan, existing_issues: list[dict[str, object]],
 
     for template in ISSUE_TEMPLATES:
         title = issue_title(plan, template)
-        found = matching_issue(existing_issues, title, plan.milestone_number)
-        if found is None:
-            for suffix in template.legacy_suffixes:
-                legacy_title = f"{plan.pack_id}: {suffix}"
-                found = matching_issue(
-                    existing_issues, legacy_title, plan.milestone_number)
-                if found is not None:
-                    break
+        found = matching_template_issue(existing_issues, plan, template)
         labels = wanted_labels(plan, template, available_labels)
         if found and not refresh_existing:
             operations.append(Operation(

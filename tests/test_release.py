@@ -6,13 +6,14 @@ profile-support consistency, and smoke-tests that delivery-bundle selection
 changes participant exposure. The gate must:
 
   * fail fast when a pack claims a *supported* delivery bundle it does not ship;
-  * separate participant / operator / oracle artifacts into distinct release
-    roots, and keep oracle/operator material out of the participant view;
+  * separate participant / operator / restricted-private artifacts into
+    distinct release roots, and keep restricted material out of the participant
+    view;
   * never leak operator tokens into a packaged participant artifact (the leak
     scan is re-run over the staged participant tier);
   * emit versioned release metadata carrying the pack version, the
     scenario-pack contract version + digest, the supported profiles, and a
-    *bounded* provenance summary (counts/statuses only — no oracle vocabulary,
+    *bounded* provenance summary (counts/statuses only — no restricted operator vocabulary,
     flags, secrets, or customer-specific prose).
 
 All cases use synthetic temp packs so no real scenario pack has to be committed

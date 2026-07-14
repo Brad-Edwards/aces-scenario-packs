@@ -29,7 +29,8 @@ What it enforces / produces:
     the supported delivery profiles, compatible runtime profiles, and a
     *bounded* provenance summary (counts and review-gate statuses only).
   * **smoke** — prove delivery-bundle selection changes participant exposure and
-    that operator/oracle material never appears in a participant view.
+    that restricted non-participant material never appears in a participant
+    view.
   * **check** — the CI entry point: lint + smoke + build-to-tempdir over every
     releasable pack; non-releasable packs are explicit skips, never silent
     partial success.
@@ -478,7 +479,7 @@ def _provenance_summary(ledger: object) -> dict[str, object]:
     """A bounded, leak-safe projection of the provenance ledger.
 
     Counts and review-gate statuses only — never source/review prose, artifact
-    paths, oracle vocabulary, or customer-specific detail.
+    paths, restricted operator vocabulary, or customer-specific detail.
     """
     ledger = ledger if isinstance(ledger, dict) else {}
     sources = ledger.get("sources") or []
@@ -565,7 +566,7 @@ def bundle_participant_views(pack_root: str) -> dict[str, list[str]]:
 
     The participant view of a bundle is the shared, participant-safe content plus
     the bundle's own participant entrypoints — exactly what a participant of that
-    delivery profile receives, and never the operator/oracle surfaces.
+    delivery profile receives, and never restricted non-participant surfaces.
     """
     pc = PackContracts(pack_root)
     supported = {b.get("bundle_id") for b in pc.supported_bundles}

@@ -22,6 +22,8 @@ artifact_boundaries:
     - path: docs/golden-readiness-checklist.md
       export: operator
       description: Operator final-review checklist.
+  # Legacy compatibility label for restricted non-participant material only;
+  # validity and participant behavior remain ACES SDL semantics.
   oracle_only: []
   commercial: []
 

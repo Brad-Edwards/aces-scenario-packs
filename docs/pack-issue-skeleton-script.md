@@ -44,7 +44,7 @@ The skeleton issues are:
 
 - scenario contract and pack skeleton
 - topology, assets, and reference-triangle design
-- hidden path, oracle, and validation model
+- ACES participant/attacker behavior specification and reference proof
 - flag, challenge, and reference CTFd layer
 - delivery profile bundles
 - golden live-infrastructure build

@@ -48,8 +48,21 @@ class SkeletonTemplateTests(unittest.TestCase):
         self.assertEqual(len(SKELETON.ISSUE_TEMPLATES), 9)
         self.assertEqual(
             [template.key for template in SKELETON.ISSUE_TEMPLATES],
-            ["contract", "topology", "oracle", "flags", "profiles",
+            ["contract", "topology", "behavior", "flags", "profiles",
              "build", "rehearsal", "manual", "final"])
+
+    def test_behavior_slice_uses_aces_participant_semantics(self):
+        template = next(
+            template for template in SKELETON.ISSUE_TEMPLATES
+            if template.key == "behavior"
+        )
+
+        body = template.renderer(self.plan())
+
+        self.assertIn("ACES participant behavior", body)
+        self.assertIn("behavior_specifications", body)
+        self.assertIn("action_contracts", body)
+        self.assertNotIn("Pack-local oracle", body)
 
     def test_rendered_bodies_are_markdown_not_code_blocks(self):
         plan = self.plan()
@@ -83,6 +96,25 @@ class SkeletonTemplateTests(unittest.TestCase):
         ops = SKELETON.build_operations(plan, existing_issues=existing)
         self.assertEqual({op.action for op in ops}, {"skip_issue"})
         self.assertEqual(len(ops), 9)
+
+    def test_legacy_oracle_issue_title_is_reused(self):
+        plan = self.plan()
+        existing = [
+            _issue(
+                102,
+                42,
+                "example-pack: define hidden path, oracle, and validation model",
+            )
+        ]
+
+        operations = SKELETON.build_operations(plan, existing_issues=existing)
+        behavior = next(
+            operation for operation in operations
+            if operation.title.endswith("specify participant attacker behavior in ACES")
+        )
+
+        self.assertEqual(behavior.action, "skip_issue")
+        self.assertEqual(behavior.issue_number, 102)
 
     def test_refresh_existing_updates_existing_templates(self):
         plan = self.plan()

@@ -1,6 +1,9 @@
 # Attack path
 
-**Required.** The attack-path model that makes the scenario understandable: the
-intended route(s) from start state to each objective/flag, the pivots, and how
-the assets chain together. Keep it aligned with `flags/placement.yaml` and the
-walkthroughs.
+**Required explanatory design prose.** Describe the intended route(s) from the
+participant start state to each objective or flag, the pivots, and how the assets
+chain together. This document is not machine-readable scenario state and must
+not define a pack-side behavior schema. The hydrated ACES SDL is the
+specification: declare attacker behavior there with ACES participant semantics,
+and keep this explanation aligned with that SDL, `flags/placement.yaml`, the
+reference tests, and the walkthroughs.

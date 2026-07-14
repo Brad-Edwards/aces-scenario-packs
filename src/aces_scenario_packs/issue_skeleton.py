@@ -49,6 +49,7 @@ class IssueTemplate(object):
     suffix: str
     labels: tuple[str, ...]
     renderer: Callable[[PackPlan], str]
+    legacy_suffixes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -69,8 +70,8 @@ COMMON_ANCHORS = """\
   scenario-pack convention and milestone structure.
 - The bundled template (copied by `aces-new-pack`): build doctrine - offensive by default, one full scenario per
   pack, no stubs or hand-waved services, and `golden` only after participant-equivalent proof.
-- `docs/scenario-packs.md`: pack metadata, provenance ledger, compatibility manifest, profile bundles, validation
-  oracle, and release boundaries.
+- `docs/scenario-packs.md`: pack metadata, provenance ledger, compatibility manifest, ACES participant behavior,
+  profile bundles, and release boundaries.
 - `docs/golden-readiness.md`: isolated golden infrastructure, automated rehearsal, final manual participant walkthrough,
   and teardown proof.
 """
@@ -183,28 +184,30 @@ def topology_body(plan: PackPlan) -> str:
     """)
 
 
-def oracle_body(plan: PackPlan) -> str:
-    """Oracle body."""
+def behavior_body(plan: PackPlan) -> str:
+    """ACES participant-behavior body."""
     return clean(f"""\
     ## Goal
-    Define the hidden path, affordance ledger, objective oracle, and validation model for `{plan.pack_id}`.
+    Specify ACES participant behavior for the attacker in `{plan.pack_id}`.
 
     {pack_block(plan)}
     {COMMON_ANCHORS}
     ## Deliverables
-    - Hidden canonical path from participant start state through the scenario objective.
-    - Accepted alternates, prerequisites, failure states, negative gates, and objective success states.
-    - Affordance ledger mapping clues, credentials, tools, planted artifacts, privileges, routes, services, and data to
-      concrete `sdl/` and `assets/` references.
-    - Pack-local oracle ledgers and validators.
-    - Explicit separation between hidden oracle material and participant-facing content.
+    - ACES `agents`, `behavior_specifications`, and `action_contracts` that identify the attacker participant and the
+      governed actions available to that participant.
+    - ACES preconditions, effects, failure classes, observation boundaries, outcome interpretation rules, objectives,
+      evidence requirements, and workflows needed to describe the intended behavior.
+    - Pack-local explanatory design prose mapping clues, credentials, tools, planted artifacts, privileges, routes,
+      services, and data to concrete ACES SDL and `assets/` references without defining a second semantic model.
+    - Reference tests and walkthroughs that execute the declared behavior from the participant surface against the live
+      golden build.
 
     ## Acceptance Criteria
-    - Every success state is reachable from the intended participant privilege context.
-    - Negative gates prove objectives, flags, and proof artifacts are not trivially reachable before the intended action
-      or privilege.
-    - Validators fail on missing assets, unresolved path steps, leaked hidden vocabulary, or oracle references that do
-      not map to real topology/content.
+    - The hydrated ACES SDL is the only machine-readable scenario specification; no pack-side behavior or reachability
+      schema is introduced.
+    - ACES validation accepts every participant-behavior reference and rejects unresolved semantic references.
+    - Live rehearsal and the participant walkthrough demonstrate that the reference build realizes the declared ACES
+      behavior and objectives from the intended participant privilege context.
 
     {child_issue_note()}
     """)
@@ -222,8 +225,7 @@ def flag_body(plan: PackPlan) -> str:
     - `flags/placement.yaml` with one entry per flag and stable `flag_id`s.
     - `challenges/challenges.yaml` with participant-facing challenge text keyed by the same `flag_id`s.
     - `ctfd/` reference loader and tests.
-    - Validator coverage reconciling flags to objectives, topology assets, hidden path states, challenges, and CTFd
-      output.
+    - Validator coverage reconciling flags to ACES objectives, topology assets, challenges, and CTFd output.
 
     ## Acceptance Criteria
     - `pack.yaml.contents.flag_layer: true` only when `flags/`, `challenges/`, and `ctfd/` all ship together.
@@ -251,10 +253,10 @@ def profile_body(plan: PackPlan) -> str:
       `pack.compatibility.yaml.delivery_bundles` rows.
 
     ## Acceptance Criteria
-    - Selecting a profile changes content exposure only; it does not create a second hidden path or a second golden
-      proof.
-    - Participant files do not disclose oracle ids, ordered hidden-path labels, proof predicates, raw evidence, answers,
-      credentials, flags, or next-step hints.
+    - Selecting a profile changes content exposure only; it does not create a second scenario specification or a second
+      golden proof.
+    - Participant files do not disclose operator-only action ordering, raw evidence, answers, credentials, flags, or
+      next-step hints.
     - If this pack intentionally has no profile layer, close this issue as not planned only after pack metadata says so.
 
     {child_issue_note()}
@@ -300,8 +302,8 @@ def rehearsal_body(plan: PackPlan) -> str:
     {COMMON_ANCHORS}
     ## Deliverables
     - `tests/` or build-local rehearsal tooling targeting the same declared golden runtime profile as the build issue.
-    - Automated checks for setup health, participant start state, objectives/oracle states, flags when present, negative
-      gates, reset/persistence behavior, and cleanup.
+    - Automated checks for setup health, participant start state, ACES objectives and behavior, flags when present,
+      negative gates, reset/persistence behavior, and cleanup.
     - Durable rehearsal report committed under `docs/`.
     - Walkthrough alignment checks or explicit trace showing that automated steps and future human walkthroughs cover
       the same path.
@@ -335,7 +337,7 @@ def manual_body(plan: PackPlan) -> str:
     ## Acceptance Criteria
     - No SSM, cloud console, Terraform output, generated password, root/SYSTEM shell, database console, or test harness
       shortcut is used as proof of participant completion.
-    - Every required objective, oracle state, flag, and success condition is reached from the intended participant role.
+    - Every required ACES objective, flag, and success condition is reached from the intended participant role.
     - The copied golden-readiness checklist identifies exactly what was manually proven, what was automated, and what
       remains out of scope.
 
@@ -363,10 +365,10 @@ def final_body(plan: PackPlan) -> str:
     - Verify teardown evidence and ensure no live range resources remain.
 
     ## Acceptance Criteria
-    - Build, tests, walkthroughs, oracle, flags, profiles, compatibility metadata, and provenance agree path-for-path
-      and boundary-for-boundary.
-    - Participant-visible exports are leak-scanned and do not include hidden oracle vocabulary, answers, proof
-      predicates, or operator-only material.
+    - Build, tests, walkthroughs, ACES SDL, flags, profiles, compatibility metadata, and provenance agree on declared
+      behavior, objectives, and artifact boundaries.
+    - Participant-visible exports are leak-scanned and do not include restricted operator state, answers, credentials,
+      or other operator-only material.
     - Close this umbrella only after final evidence reconciliation is complete.
 
     {child_issue_note()}
@@ -398,8 +400,8 @@ ISSUE_TEMPLATES = (
         renderer=topology_body,
     ),
     IssueTemplate(
-        key="oracle",
-        suffix="define hidden path, oracle, and validation model",
+        key="behavior",
+        suffix="specify participant attacker behavior in ACES",
         labels=(
             LABEL_AREA_CONTENT,
             LABEL_AREA_VALIDATION,
@@ -407,7 +409,8 @@ ISSUE_TEMPLATES = (
             LABEL_AREA_EMULATION,
             LABEL_TIER_ACES,
         ),
-        renderer=oracle_body,
+        renderer=behavior_body,
+        legacy_suffixes=("define hidden path, oracle, and validation model",),
     ),
     IssueTemplate(
         key="flags",
@@ -530,6 +533,13 @@ def build_operations(plan: PackPlan, existing_issues: list[dict[str, object]],
     for template in ISSUE_TEMPLATES:
         title = issue_title(plan, template)
         found = matching_issue(existing_issues, title, plan.milestone_number)
+        if found is None:
+            for suffix in template.legacy_suffixes:
+                legacy_title = f"{plan.pack_id}: {suffix}"
+                found = matching_issue(
+                    existing_issues, legacy_title, plan.milestone_number)
+                if found is not None:
+                    break
         labels = wanted_labels(plan, template, available_labels)
         if found and not refresh_existing:
             operations.append(Operation(

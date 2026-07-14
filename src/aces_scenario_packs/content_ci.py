@@ -10,25 +10,22 @@ so every present and future pack benefits:
   2. **Test suites** — every ``scenarios/*/sdl/tests``,
      ``scenarios/*/build/tests``, ``scenarios/*/profiles/tests``, and
      ``scenarios/*/ctfd/tests`` unittest suite passes.
-  3. **Visibility / leak scan** — no operator token (oracle ``S-*`` states,
+  3. **Visibility / leak scan** — no restricted operator token (``S-*`` states,
      ``<n>.<L>`` step ids, ATT&CK technique ids, ``S1.*``/``S2.*`` source
      labels) appears in any participant-facing surface (``assets/content/**``,
      ``assets/briefing/**``). This is *"the single most important invariant of
-     the pack"* (scenario-design.md) — a leaked hidden-path token hands
+     the pack"* (scenario-design.md) — leaked operator action ordering hands
      participants the solution.
   4. **Manifest** — every pack ships a ``pack.yaml``.
   5. **Golden checklist** — every pack carries
      ``docs/golden-readiness-checklist.md`` so final manual participant review
      is planned and auditable.
-  6. **Shared oracle model** — the reusable operator/oracle-only model bundled
-     with this package validates its fixtures and tests without being treated as
-     a scenario pack.
-  7. **Anti-extension guard** — the compatibility schema, the bundled
+  6. **Anti-extension guard** — the compatibility schema, the bundled
      template/example, and every pack carry zero extensions to ACES semantics:
      no ``scoring`` / ``validation_oracle`` / ``telemetry`` / ``lifecycle``
      manifest layer and no ``sdl/`` semantic ledger reintroduces an ACES/runtime
      concept (ADR 0009, issue #83).
-  8. **SDL through ACES** — every pack's ``sdl/*.sdl.yaml`` start state parses
+  7. **SDL through ACES** — every pack's ``sdl/*.sdl.yaml`` start state parses
      and validates through ACES (``aces_sdl.parse_sdl_file``), and every
      ``flags/placement.yaml`` host resolves to a real ``Scenario.nodes`` id.
      SDL is validated *through ACES*, with no SDL schema restated here; the gate
@@ -59,13 +56,12 @@ from aces_scenario_packs.validation import (
 CONTENT_SAFETY_FLAGS = _SHARED_CONTENT_SAFETY_FLAGS
 
 # Canonical contract resources ship inside this installed package (schemas,
-# template, oracle fixtures + model). They are resolved relative to the package,
+# and template). They are resolved relative to the package,
 # never the consumer's working tree.
 _PKG = os.path.dirname(os.path.abspath(__file__))
 _RES = os.path.join(_PKG, "resources")
 _SCHEMAS_DIR = os.path.join(_RES, "schemas")
 _TEMPLATE_DIR = os.path.join(_RES, "template")
-_ORACLE_DIR = os.path.join(_RES, "oracle")
 
 # The catalog under validation is the consumer's tree: <_REPO>/scenarios/<pack>/.
 # Defaults to the current directory; override with --repo, or by setting these
@@ -122,9 +118,9 @@ def provenance_example_path() -> str:
     """Provenance example path."""
     return os.path.join(_TEMPLATE_DIR, "docs", "provenance-ledger.example.yaml")
 
-# Packs are scenarios/<name>/ with a pack.yaml. `_template` is a scaffold and
-# `_oracle` is the shared oracle model, not packs; the gate skips both.
-SKIP = {"_template", "_oracle"}
+# Packs are scenarios/<name>/ with a pack.yaml. `_template` is a scaffold, not
+# a pack, so the gate skips it.
+SKIP = {"_template"}
 
 
 class _AuthorStaticView(object):
@@ -157,7 +153,7 @@ _AUTHOR_STATIC_CACHE: dict[str, _AuthorStaticView] = {}
 
 # Operator tokens that must never reach participant-facing surfaces.
 TOKEN_PATTERNS = [
-    (re.compile(r"\bS-[A-Z]{3,}\b"), "oracle S-* state"),
+    (re.compile(r"\bS-[A-Z]{3,}\b"), "restricted S-* state"),
     (re.compile(r"\bS[12]\.\d{1,2}\b"), "source label S1.*/S2.*"),
     (re.compile(r"\bT\d{4}(?:\.\d{3})?\b"), "ATT&CK technique id"),
     (re.compile(r"(?<![\w.])(?:10|[1-9])\.[A-Z](?![\w])"), "attack-path step id"),
@@ -509,7 +505,7 @@ def _token_leaks(path: str) -> list[tuple[str, int]]:
     off participant-facing surfaces; the CI log is itself a quasi-public surface,
     so the report must not disclose the match (issue #138). Echoing the raw match
     obviously leaks it, but so does any token-*derived* verifier: the scanned
-    vocabularies (oracle ``S-*`` states, ATT&CK technique ids, step ids) are
+    vocabularies (restricted ``S-*`` states, ATT&CK technique ids, step ids) are
     low-entropy, so even a truncated hash is reversible by precomputation. The
     class label plus ``path:line`` is enough for an operator to find the match
     locally without the gate disclosing it.
@@ -530,7 +526,8 @@ def _participant_roots(pack: str) -> list[str]:
     participant surfaces (#50): ``profiles/_shared`` and every
     ``profiles/<bundle>/participant`` directory. Operator bundle dirs
     (``profiles/<bundle>/operator``) are intentionally excluded; they may
-    legitimately cite the oracle. New bundles are covered automatically.
+    legitimately cite restricted operator material. New bundles are covered
+    automatically.
     """
     roots = [os.path.join(SCEN, pack, *parts) for parts in PARTICIPANT_DIRS]
     profiles = os.path.join(SCEN, pack, "profiles")
@@ -597,53 +594,6 @@ def check_wizard_spider_pack_drift(failures: list[str]) -> None:
                 "#208-#214 pack-layer sequence")
     if scanned:
         print(f"  [ok] wizard-spider pack drift scan ({scanned} files)")
-
-
-def _shared_oracle_model_file() -> str:
-    """Shared oracle model file."""
-    return os.path.join(_PKG, "oracle_model.py")
-
-
-def _shared_oracle_fixture_paths() -> list[str]:
-    """Shared oracle fixture paths."""
-    fixtures = os.path.join(_ORACLE_DIR, "fixtures")
-    if not os.path.isdir(fixtures):
-        return []
-    return [
-        os.path.join(fixtures, name)
-        for name in sorted(os.listdir(fixtures))
-        if name.endswith((".yaml", ".yml"))
-    ]
-
-
-def check_shared_oracle_model(failures: list[str]) -> None:
-    """Smoke-check the packaged shared oracle model against its shipped fixtures.
-
-    The model and fixtures ship inside this package; the package's own test suite
-    exercises the model's behaviour. This gate only confirms the shipped model
-    validates its shipped fixtures, so a broken release is caught in the field.
-    """
-    model = _shared_oracle_model_file()
-    fixtures = _shared_oracle_fixture_paths()
-
-    if not os.path.isfile(model):
-        failures.append("shared oracle model MISSING from package")
-        return
-    if not fixtures:
-        failures.append("shared oracle fixtures MISSING from package")
-        return
-
-    r = subprocess.run(
-        [sys.executable, model, "validate", *fixtures],
-        capture_output=True,
-        text=True,
-    )
-    if r.returncode != 0:
-        failures.append(
-            "shared oracle fixtures FAILED:\n"
-            f"{r.stdout[-1200:]}{r.stderr[-1200:]}")
-    else:
-        print(f"  [ok] shared oracle fixtures ({len(fixtures)} files)")
 
 
 def _load_yaml(path: str, failures: list[str], label: str) -> object:
@@ -1252,8 +1202,6 @@ def main(argv: list[str] | None = None) -> int:
     _AUTHOR_STATIC_CACHE.clear()
 
     failures: list[str] = []
-    print("== shared oracle model ==")
-    check_shared_oracle_model(failures)
     print("== validators ==")
     check_validators(failures)
     print("== test suites ==")

@@ -88,28 +88,28 @@ A **golden range** is the verified reference build that:
 3. provides a real **participant execution surface** — attacker host, browser
    terminal, seeded foothold, VPN/jump host, or equivalent — from which the
    participant can run the scenario in the intended role;
-4. **proves the full attack path runs end to end** from that participant
-   surface — every objective / oracle success state actually reached — by
-   **executing** it; and
+4. **demonstrates the declared ACES participant behavior end to end** from that
+   participant surface — every required ACES objective and flag actually
+   reached — by **executing** it; and
 5. ships that proof as **passing tests** plus a **committed rehearsal report**
    (durable evidence, the way a reference build is signed off).
 
 SSM, cloud-console actions, Terraform outputs, generated passwords, root/SYSTEM
 shells, database consoles, and similar operator channels are valid for
 provisioning, reset, observation, teardown, and diagnostics. They are **not**
-valid proof that the participant path works. If the happy path needs a user,
+valid proof that the participant behavior works. If the intended behavior needs a user,
 credential, domain join, service, share, tool, route, artifact, flag, or secret,
 the golden build must put it in-world and the participant must be able to reach
 or derive it from the scenario itself.
 
 `pack.yaml.status` earns **`golden` only** when that full live build *and*
-participant-equivalent full-path proof exist. `built` = it stands up but the
-full path is not yet proven end to end from the participant surface. `draft` =
+participant-equivalent end-to-end proof exists. `built` = it stands up but the
+declared behavior is not yet proven end to end from the participant surface. `draft` =
 design only, nothing stood up. **Never** mark a pack `golden` (or claim it
 works) on a partial build, a local-only shortcut, an operator-only harness run,
-or a path proven "mostly." The reference triangle — [`build/`](build/),
+or behavior proven "mostly." The reference triangle — [`build/`](build/),
 [`tests/`](tests/), and [`docs/walkthroughs/`](docs/) — all point at that **one**
-golden range and must agree with it path-for-path.
+golden range and must agree on the declared ACES behavior and objectives.
 
 Golden still does **not** mean the pack owns the consuming range's scoreboard,
 portal, class-management UX, scoring engine, or telemetry product. Those remain

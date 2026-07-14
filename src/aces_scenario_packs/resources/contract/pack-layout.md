@@ -158,13 +158,13 @@ valid equivalents:
 |---|---|
 | `participant_visible` / `public` | `assets/briefing/`, safe `assets/content/`, `profiles/_shared/`, `profiles/*/participant/`, or an explicit `public/` root |
 | `operator_only` | `profiles/*/operator/`, `docs/` operator runbooks, `tests/`, `build/`, `ctfd/`, or an explicit `operator/` root |
-| `oracle_only` / `private` | hidden-path docs, oracle ledgers, proof predicates, `sdl/*oracle*`, or an explicit `oracle/` root |
+| `oracle_only` / `private` | Restricted non-participant rehearsal evidence, answer material, operator diagnostics, or a legacy explicit `oracle/` root. These are release-boundary labels only, not scenario semantics. |
 | `commercial` | bundled content a commercial catalog may ship to licensed operators, commonly `profiles/`, `build/`, `tests/`, `ctfd/`, docs, or an explicit commercial export root |
 
 If a pack introduces literal `public/`, `operator/`, or `oracle/` directories,
 map them in `pack.compatibility.yaml` before content relies on them. Participant-visible roots are still covered by the repo-wide
-leak scan; operator/oracle/private roots may cite hidden state, proof
-predicates, and reset internals.
+leak scan; operator/oracle/private roots may contain restricted action ordering,
+answers, credentials, raw evidence, and reset internals.
 
 ### Provenance ledger (`docs/provenance-ledger.yaml`)
 
@@ -247,24 +247,30 @@ artifact roots, so an overlay can be removed without contaminating the base
 pack's source, licensing, or redistributability claims — and a base export never
 includes customer-specific material.
 
-### Shared validation oracle model
+### Validity and ACES participant behavior
 
-Reusable oracle authoring guidance and fixture validation ship in the package
-[`oracle/`](../oracle/) model. It is shared operator/oracle-only source, not a
-scenario pack, and `aces-pack-validate` validates it through a dedicated
-shared-oracle gate.
+The hydrated ACES SDL is the scenario specification. A pack declares the
+attacker through ACES `agents` and `behavior_specifications`, binds governed
+actions through `action_contracts`, and uses ACES preconditions, effects,
+failure classes, observation boundaries, outcome interpretation rules,
+objectives, evidence requirements, and workflows as needed. The pinned
+`aces-sdl` parser is the semantic authority; this package defines no parallel
+behavior, route, reachability, or validity schema.
 
-Pack-local files remain the source of truth for a scenario's hidden path and
-proof: `docs/attack-path.md`, `docs/scenario-design.md`, `docs/oracle-map.md`, or
-equivalent operator/oracle-only ledgers. The shared model normalizes the common shape across packs: canonical
-steps, accepted alternates, evidence, prerequisites, failure states, consumer
-adapters, and operator or benchmark exports.
+Pack-local `docs/attack-path.md` remains required explanatory design prose. It
+may describe an intended route through the environment, but it is not
+machine-readable system state and does not override the hydrated SDL. Reference
+tests and walkthroughs demonstrate that the live golden build realizes the
+declared ACES behavior and objectives from the participant surface; static parse
+success alone is not runtime proof.
 
-Oracle artifacts must stay separate from participant-visible content. A
-participant or agent-benchmark export may expose stable objective ids and award
-summaries, but never hidden step order, `S-*` success states, proof predicates,
-raw evidence, answers, credentials, flags, or next-step hints. CTFd remains a
-consumer adapter over validator verdicts; a CTFd solve is not the oracle.
+Restricted non-participant material must stay separate from participant-visible
+content. A participant or agent-benchmark export may expose stable ACES
+objective ids and participant-safe summaries, but never restricted action
+ordering, raw evidence, answers, credentials, flags, or next-step hints. The
+`oracle_only` group and `oracle` export value remain compatibility labels for
+that release boundary only; they do not confer semantic authority. CTFd remains
+a consumer of the ACES-backed scenario and live proof, not a competing spec.
 
 ### A. Start state & content (declarative)
 
@@ -324,7 +330,8 @@ doesn't (a pure-emulation scenario may have neither).
   [visibility boundary](#how-a-consumer-uses-a-pack): participant-facing files
   live under `profiles/<bundle>/participant/` (and `profiles/_shared/`) and are
   leak-scanned exactly like `assets/briefing/`; operator/facilitator-only files
-  live under `profiles/<bundle>/operator/` and may cite the hidden oracle. A
+  live under `profiles/<bundle>/operator/` and may cite restricted execution
+  evidence. A
   pack ships this layer with a static `profiles/validate_*.py` gate, the same
   way the SDL ledgers ship their validators.
 
@@ -332,14 +339,14 @@ doesn't (a pure-emulation scenario may have neither).
 
   | Bundle id | Required artifacts | Optional artifacts | Exposure rule |
   |---|---|---|---|
-  | `guided` | Staged objectives, progressive hints, teaching notes or facilitator pacing, and answer checks/checkpoints. | Facilitator prompts, room pacing variants, remediation notes. | Participant files may teach method but must not reveal oracle ids, ordered hidden-path labels, or proof predicates. Facilitator notes are operator-only. |
-  | `unguided` | Terse mission brief, participant objectives, and rules of engagement. | Post-run reveal, debrief notes, rubric summary. | Participant files contain no path hints, staged solution order, or hidden oracle vocabulary. Operator calibration stays operator-only unless expressed as participant-safe objective text. |
+  | `guided` | Staged objectives, progressive hints, teaching notes or facilitator pacing, and answer checks/checkpoints. | Facilitator prompts, room pacing variants, remediation notes. | Participant files may teach method but must not reveal restricted action ordering, answers, or raw evidence. Facilitator notes are operator-only. |
+  | `unguided` | Terse mission brief, participant objectives, and rules of engagement. | Post-run reveal, debrief notes, rubric summary. | Participant files contain no next-step hints or staged solution order. Operator calibration stays operator-only unless expressed as participant-safe objective text. |
   | `purple-team` | Defender injects, detection goals, expected alert references, blue-team tasks, and debrief prompts. | Timeline variants, SIEM query examples, after-action worksheet. | Defender/operator material may reference expected alerts and detections, but any red-team handout remains separate and leak-scanned. |
-  | `agent-benchmark` | Deterministic task envelope, participant-safe objective contract, and no-facilitator run metadata. | Allowed assumptions, timeout/resource policy, replay metadata, result schema. | The agent-facing contract is participant-safe. Any join from public objective ids to oracle states, raw proof, or answers is operator-only. |
-  | `demo` | Shortened path description, reduced-resource runtime compatibility, high-signal proof moments, and presenter script. | Fallback script, timing notes, preflight checklist, cleanup note. | A demo may constrain exposed milestones or compatible runtime profiles, but it reuses the existing build/test contracts and never creates a second hidden path or proof oracle. |
+  | `agent-benchmark` | Deterministic task envelope, participant-safe objective contract, and no-facilitator run metadata. | Allowed assumptions, timeout/resource policy, replay metadata, result schema. | The agent-facing contract is participant-safe. Joins from public objective ids to raw execution evidence or answers are operator-only. |
+  | `demo` | Shortened route description, reduced-resource runtime compatibility, high-signal proof moments, and presenter script. | Fallback script, timing notes, preflight checklist, cleanup note. | A demo may constrain exposed milestones or compatible runtime profiles, but it reuses the existing ACES specification and build/test contracts and never creates a second behavior spec. |
 
   Profile selection changes **content exposure only**. It does not fork the
-  scenario topology, planted content, hidden attack path, flags, or golden proof.
+  hydrated ACES SDL, scenario topology, planted content, flags, or golden proof.
   A shortened demo can expose fewer beats, and an agent benchmark can expose a
   deterministic task envelope, but both still point back to the same base
   scenario contract.
@@ -357,7 +364,7 @@ doesn't (a pure-emulation scenario may have neither).
     `profiles/<bundle>/operator/` according to the exposure rule.
   - A pack-local `profiles/validate_*.py` gate and `profiles/tests` suite that
     validates the manifest, pack index, runtime-profile joins,
-    participant/operator split, leak scan, and any oracle joins.
+    participant/operator split, leak scan, and any objective/evidence joins.
   - When the pack has a compatibility projection, matching
     `pack.compatibility.yaml.delivery_bundles` rows with pack-local manifest,
     participant path, operator path, and validation references.
@@ -430,13 +437,14 @@ The checklist must cover, at minimum:
 - [ ] Operator channels such as SSM, Terraform, cloud consoles, generated
       passwords, root/SYSTEM shells, and database consoles are used only for
       provisioning, diagnostics, reset, observation, or teardown.
-- [ ] Every required objective, oracle state, flag, and success condition is
-      reached from the intended participant privilege context.
+- [ ] Every required ACES objective, flag, and success condition is reached
+      from the intended participant privilege context.
 - [ ] Negative gates prove objectives/flags are not trivially reachable before
       the required action or privilege.
 - [ ] Reset, persistence, survival, or cleanup behavior works where claimed.
 - [ ] Automated rehearsal passes against the same golden build profile.
-- [ ] The human walkthrough and automated rehearsal agree path-for-path.
+- [ ] The human walkthrough and automated rehearsal exercise the same declared
+      ACES behavior and objectives.
 - [ ] Durable evidence is committed as a rehearsal report.
 - [ ] Teardown is run and verified; no live range resources remain.
 - [ ] `pack.yaml.status: golden` is set only after the above proof exists.
@@ -449,7 +457,7 @@ explicitly smaller, create or track issues for these slices:
 
 - [ ] Scenario contract and pack skeleton.
 - [ ] Topology, assets, and reference-triangle design.
-- [ ] Hidden path, affordance ledger, objective oracle, and validation model.
+- [ ] Attacker behavior specified in ACES participant semantics.
 - [ ] Flag, challenge, and reference CTFd layer, when the scenario has flags.
 - [ ] Delivery profile bundles, when the scenario has multiple audiences.
 - [ ] Golden build implementation in the declared live infrastructure.
@@ -571,7 +579,7 @@ skips, never a silent partial release.
   participant-visible, operator-only, and oracle-only material are physically
   separated. Every path is containment-checked (`..`, absolute, and
   symlink-escape paths are rejected), and the operator-token leak scan is re-run
-  over the staged participant tier so no hidden vocabulary reaches a participant
+  over the staged participant tier so no restricted operator vocabulary reaches a participant
   artifact.
 - **Profile smoke.** Delivery-bundle selection must change participant exposure:
   each supported bundle's participant view (`_shared/` includes + its
@@ -584,7 +592,7 @@ skips, never a silent partial release.
   not semantic versions), the **Scenario-pack contract version** above plus a
   `sha256` digest of this file, the supported delivery profiles, compatible
   runtime profiles, and a bounded provenance summary (counts and review-gate
-  statuses only — never source/review prose or oracle vocabulary).
+  statuses only — never source/review prose or restricted operator vocabulary).
 
 Run it locally exactly as CI does:
 

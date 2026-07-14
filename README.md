@@ -51,7 +51,7 @@ locations, never source bodies or absolute paths. See
   - [`docs/scenario-packs.md`](docs/scenario-packs.md) — what a scenario pack is.
   - Layout contract + schemas + template ship as package data under
     [`src/aces_scenario_packs/resources/`](src/aces_scenario_packs/resources/)
-    (`contract/pack-layout.md`, `schemas/`, `template/`, `oracle/`).
+    (`contract/pack-layout.md`, `schemas/`, `template/`).
   - [Architecture Decision Records](docs/decisions/adrs/) — purpose, packaging,
     build/release, SBOM.
 - **Tools** — the package modules under

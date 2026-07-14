@@ -32,7 +32,7 @@ Structure new scenario milestones so the final proof is planned:
 
 - [ ] Scenario contract and pack skeleton.
 - [ ] Topology, assets, and reference-triangle design.
-- [ ] Hidden path, affordance ledger, objective oracle, and validation model.
+- [ ] Attacker behavior is specified in ACES participant semantics.
 - [ ] Flag, challenge, and reference CTFd layer, when the scenario has flags.
 - [ ] Delivery profile bundles, when the scenario has multiple audiences.
 - [ ] Golden build implementation in the declared live infrastructure.
@@ -58,13 +58,14 @@ Every pack carries this checklist at
 - [ ] Operator channels such as SSM, Terraform, cloud consoles, generated
       passwords, root/SYSTEM shells, and database consoles are used only for
       provisioning, diagnostics, reset, observation, or teardown.
-- [ ] Every required objective, oracle state, flag, and success condition is
-      reached from the intended participant privilege context.
+- [ ] Every required ACES objective, flag, and success condition is reached
+      from the intended participant privilege context.
 - [ ] Negative gates prove objectives/flags are not trivially reachable before
       the required action or privilege.
 - [ ] Reset, persistence, survival, or cleanup behavior works where claimed.
 - [ ] Automated rehearsal passes against the same golden build profile.
-- [ ] The human walkthrough and automated rehearsal agree path-for-path.
+- [ ] The human walkthrough and automated rehearsal exercise the same declared
+      ACES behavior and objectives.
 - [ ] Durable evidence is committed as a rehearsal report.
 - [ ] Teardown is run and verified; no live range resources remain.
 - [ ] `pack.yaml.status: golden` is set only after the above proof exists.

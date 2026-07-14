@@ -33,6 +33,8 @@ description: >
   pack.compatibility.yaml's runtime-visibility export values
   (public/operator/oracle/private/commercial): one axis answers "what may we
   publish, sell, or hand a customer", the other answers "who sees it at runtime".
+  The legacy `oracle` visibility value is only a restricted-release label; it
+  defines no scenario semantics.
 $comment: >
   ACES-alignment field disposition (issue #82; see contract/pack-layout.md and
   docs/scenario-packs.md for the full mapping). Every retained field is either

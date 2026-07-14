@@ -75,6 +75,9 @@ properties:
         items:
           $ref: "#/$defs/boundary_entry"
       oracle_only:
+        description: >
+          Compatibility label for a restricted non-participant release
+          boundary. It does not define an oracle or any scenario semantics.
         type: array
         items:
           $ref: "#/$defs/boundary_entry"

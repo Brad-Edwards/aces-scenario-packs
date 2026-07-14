@@ -20,9 +20,9 @@ artifact_boundaries:
       export: commercial
       description: Commercial operator runbook.
   oracle_only:
-    - path: oracle/success-states.yaml
+    - path: restricted/rehearsal-evidence.yaml
       export: private
-      description: Hidden validation oracle.
+      description: Restricted participant-execution evidence; the boundary label has no scenario semantics.
   commercial:
     - path: profiles/
       export: commercial
@@ -123,8 +123,8 @@ assets:
     path: operator/runbook.md
     visibility: operator
     status: shipped
-  - asset_id: oracle-success-states
-    path: oracle/success-states.yaml
+  - asset_id: restricted-rehearsal-evidence
+    path: restricted/rehearsal-evidence.yaml
     visibility: oracle
     status: shipped
 
@@ -134,8 +134,8 @@ operator_surfaces:
     role: range_ops
     visibility: operator
     status: shipped
-  - surface_id: oracle-map
-    path: oracle/success-states.yaml
+  - surface_id: participant-execution-evidence
+    path: restricted/rehearsal-evidence.yaml
     role: validator
     visibility: oracle
     status: shipped

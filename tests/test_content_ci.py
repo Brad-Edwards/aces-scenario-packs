@@ -7,7 +7,7 @@ token-independent locator (file path + line number), and must NOT emit the raw
 token body OR any token-derived verifier (e.g. a hash of the match) — otherwise
 the gate that exists to keep operator tokens off participant-facing surfaces
 would itself leak them into the (quasi-public) Actions log. The operator-token
-vocabularies are low-entropy (oracle states, ATT&CK technique ids), so even a
+vocabularies are low-entropy (operator states, ATT&CK technique ids), so even a
 truncated digest is reversible by precomputation and is not acceptable
 (issue #138).
 """
@@ -54,12 +54,12 @@ SCAFFOLD = _load_scaffold_module()
 
 # Representative operator tokens that must never reach a participant surface.
 TOKEN_EXAMPLES = [
-    ("oracle", "S-EXFILSTAGE"),   # oracle S-* state
+    ("restricted S-* state", "S-EXFILSTAGE"),
     ("source label", "S1.12"),    # source label S1.*/S2.*
     ("ATT&CK", "T1059.003"),      # ATT&CK technique id
     ("attack-path", "7.B"),       # attack-path step id
 ]
-ORACLE_TOKEN = TOKEN_EXAMPLES[0][1]
+OPERATOR_STATE_TOKEN = TOKEN_EXAMPLES[0][1]
 TECH_TOKEN = TOKEN_EXAMPLES[2][1]
 
 
@@ -189,43 +189,6 @@ class WizardSpiderPackDriftTest(unittest.TestCase):
             CI.SCEN, CI._REPO = orig_scen, orig_repo
 
         self.assertEqual(failures, [])
-
-
-class SharedOracleModelGateTest(unittest.TestCase):
-    def test_shared_oracle_model_gate_is_clean(self):
-        failures: list[str] = []
-        CI.check_shared_oracle_model(failures)
-        self.assertEqual(failures, [])
-
-    def test_missing_shared_oracle_model_is_flagged(self):
-        # The model ships inside the package; simulate a broken package build by
-        # pointing the package dir at a location that has no oracle_model.py.
-        tmp = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, tmp)
-
-        orig_pkg = CI._PKG
-        CI._PKG = tmp
-        try:
-            failures: list[str] = []
-            CI.check_shared_oracle_model(failures)
-        finally:
-            CI._PKG = orig_pkg
-
-        self.assertIn("shared oracle model MISSING", "\n".join(failures))
-
-    def test_shared_oracle_directory_is_not_a_pack(self):
-        tmp = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, tmp)
-        scen = os.path.join(tmp, "scenarios")
-        os.makedirs(os.path.join(scen, "_oracle"), exist_ok=True)
-        os.makedirs(os.path.join(scen, "real-pack"), exist_ok=True)
-
-        orig_scen = CI.SCEN
-        CI.SCEN = scen
-        try:
-            self.assertEqual(CI._packs(), ["real-pack"])
-        finally:
-            CI.SCEN = orig_scen
 
 
 class AntiExtensionGuardTest(unittest.TestCase):

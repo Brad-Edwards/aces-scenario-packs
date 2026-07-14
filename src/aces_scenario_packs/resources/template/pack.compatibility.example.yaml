@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: "scenario-pack-compatibility/v1"
 pack:
   name: example-commercial-pack
   title: "Example Commercial Pack"

@@ -14,7 +14,7 @@
 # Distribution classes (open | redistributable | internal-only | commercial-only
 # | generated | customer-specific) describe publishing/redistribution rights and
 # are SEPARATE from pack.compatibility.yaml's runtime-visibility export values.
-schema_version: 1
+schema_version: "scenario-pack-provenance/v1"
 pack:
   name: <name>                   # must match pack.yaml name
 

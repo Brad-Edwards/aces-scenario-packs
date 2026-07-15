@@ -1,4 +1,4 @@
-# ADR 0015 — Manifest-led catalog pack discovery
+# ADR 0016 — Manifest-led catalog pack discovery
 
 - Status: Accepted
 - Date: 2026-07-15

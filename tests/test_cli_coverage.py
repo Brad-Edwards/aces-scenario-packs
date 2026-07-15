@@ -230,10 +230,8 @@ class ContentCiWalkTests(unittest.TestCase):
             CI.SCEN, CI._REPO = os.path.join(tmp, "scenarios"), tmp
             try:
                 with redirect_stdout(io.StringIO()):
-                    rc = CI.main(["--repo", tmp])
+                    rc = CI.main(["--pack", pack])
                 self.assertIn(rc, (0, 1))
-                # discovery finds the scaffolded pack
-                self.assertIn("cov-pack", CI._packs())
             finally:
                 CI.SCEN, CI._REPO = orig
 

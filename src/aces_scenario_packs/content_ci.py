@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Repo-wide scenario-content gate (issue #138).
+"""Scenario-pack author-content gate (issue #138).
 
 Mechanically enforces the scenario-pack contract that was previously "enforced
 by review" — so a regression cannot ship just because a reviewer forgot to run
-the validators. Runs the same checks for EVERY pack under ``scenarios/<name>/``,
-so every present and future pack benefits:
+the validators. Validates one explicit pack or every direct child of an explicit
+packs root:
 
   1. **Validators** — every ``scenarios/*/sdl/validate_*.py validate`` exits 0.
   2. **Test suites** — every ``scenarios/*/sdl/tests``,
@@ -34,7 +34,8 @@ so every present and future pack benefits:
 Stdlib + PyYAML, plus ACES (``aces-sdl``, exactly pinned per ADR 0011) for SDL
 validation. Run locally exactly as CI does:
 
-    aces-pack-validate --repo .
+    aces-pack-validate --pack ./path/to/pack
+    aces-pack-validate --packs-root ./path/to/packs
 """
 
 from __future__ import annotations
@@ -173,7 +174,7 @@ TEXT_EXT = {".md", ".txt", ".yaml", ".yml", ".csv", ".json", ".log", ".note"}
 
 def _discovery_failure(failures: list[str] | None, location: str) -> None:
     """Record a bounded discovery failure, or raise for an unwrapped caller."""
-    message = f"CATALOG DISCOVERY FAILED: {location} could not be inspected"
+    message = f"PACK-ROOT DISCOVERY FAILED: {location} could not be inspected"
     if failures is None:
         raise RuntimeError(message)
     failures.append(message)
@@ -182,16 +183,20 @@ def _discovery_failure(failures: list[str] | None, location: str) -> None:
 def _packs(
     scenarios_root: str | None = None,
     failures: list[str] | None = None,
+    *,
+    require_root: bool = False,
 ) -> tuple[str, ...]:
-    """Return one sorted snapshot of direct manifest-bearing pack directories."""
+    """Return one sorted snapshot of every direct real child directory."""
     root = os.path.abspath(scenarios_root or SCEN)
     try:
         with os.scandir(root) as entries:
             children = sorted(entries, key=lambda entry: entry.name)
     except FileNotFoundError:
+        if require_root:
+            _discovery_failure(failures, "root")
         return ()
     except OSError:
-        _discovery_failure(failures, "scenarios/")
+        _discovery_failure(failures, "root")
         return ()
 
     packs: list[str] = []
@@ -199,15 +204,10 @@ def _packs(
         try:
             if not entry.is_dir(follow_symlinks=False):
                 continue
-            with os.scandir(entry.path) as pack_entries:
-                has_marker = any(
-                    child.name == PACK_MANIFEST_FILE for child in pack_entries
-                )
         except OSError:
-            _discovery_failure(failures, "scenarios/<entry>/")
+            _discovery_failure(failures, "<entry>/")
             continue
-        if has_marker:
-            packs.append(entry.name)
+        packs.append(entry.name)
     return tuple(packs)
 
 
@@ -1175,17 +1175,36 @@ def main(argv: list[str] | None = None) -> int:
     global _REPO, SCEN
     import argparse
     parser = argparse.ArgumentParser(
-        description="Validate a scenario-pack catalog against the ACES pack contract.")
-    parser.add_argument(
-        "--repo", default=_REPO,
-        help="Catalog root containing scenarios/<pack>/ (default: current directory).")
+        description="Validate scenario-pack source against the ACES pack contract.")
+    targets = parser.add_mutually_exclusive_group()
+    targets.add_argument("--pack", help="Path to one pack directory.")
+    targets.add_argument(
+        "--packs-root",
+        help="Directory whose direct child directories are all pack candidates.",
+    )
+    targets.add_argument(
+        "--repo",
+        help="Legacy catalog root containing scenarios/<pack>/ (default: current directory).",
+    )
     args = parser.parse_args(argv)
-    _REPO = os.path.abspath(args.repo)
-    SCEN = os.path.join(_REPO, "scenarios")
     _AUTHOR_STATIC_CACHE.clear()
 
     failures: list[str] = []
-    packs = _packs(SCEN, failures)
+    if args.pack:
+        pack_root = os.path.abspath(args.pack)
+        if not os.path.isdir(pack_root):
+            parser.error(f"pack directory not found: {args.pack}")
+        _REPO = os.path.dirname(pack_root)
+        SCEN = _REPO
+        packs = (os.path.basename(pack_root),)
+    elif args.packs_root:
+        _REPO = os.path.abspath(args.packs_root)
+        SCEN = _REPO
+        packs = _packs(SCEN, failures, require_root=True)
+    else:
+        _REPO = os.path.abspath(args.repo or os.getcwd())
+        SCEN = os.path.join(_REPO, "scenarios")
+        packs = _packs(SCEN, failures)
     print("== static pack contract ==")
     static_views = check_static_contract(failures, packs)
     runnable_packs = tuple(

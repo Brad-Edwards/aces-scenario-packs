@@ -16,10 +16,12 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import io
 import os
 import shutil
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from unittest import mock
 
 import yaml
@@ -319,7 +321,7 @@ class PackDiscoveryTest(unittest.TestCase):
         os.makedirs(scen, exist_ok=True)
         return tmp, scen
 
-    def test_only_direct_manifest_bearing_directories_are_packs(self):
+    def test_every_direct_real_directory_is_a_pack_candidate(self):
         _tmp, scen = self._with_temp_catalog()
         os.makedirs(os.path.join(scen, "design-notes"))
         os.makedirs(os.path.join(scen, "legacy-scenario", "sdl"))
@@ -332,37 +334,13 @@ class PackDiscoveryTest(unittest.TestCase):
                   encoding="utf-8") as fh:
             fh.write("name: alpha-pack\n")
 
-        self.assertEqual(CI._packs(scen), ("alpha-pack", "real-pack"))
+        with open(os.path.join(scen, "README.md"), "w", encoding="utf-8") as fh:
+            fh.write("not a pack directory\n")
 
-    def test_marker_bearing_template_is_a_pack_candidate(self):
-        _tmp, scen = self._with_temp_catalog()
-        template = os.path.join(scen, "_template")
-        os.makedirs(template)
-        with open(os.path.join(template, "pack.yaml"), "w",
-                  encoding="utf-8") as fh:
-            fh.write("not: valid: yaml\n")
-
-        self.assertEqual(CI._packs(scen), ("_template",))
-
-    def test_symlinked_marker_remains_a_candidate_for_static_rejection(self):
-        tmp, scen = self._with_temp_catalog()
-        pack = os.path.join(scen, "linked-marker")
-        os.makedirs(pack)
-        target = os.path.join(tmp, "outside.yaml")
-        with open(target, "w", encoding="utf-8") as fh:
-            fh.write("name: linked-marker\n")
-        os.symlink(target, os.path.join(pack, "pack.yaml"))
-
-        self.assertEqual(CI._packs(scen), ("linked-marker",))
-
-    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO creation is not supported")
-    def test_special_file_marker_remains_a_candidate_for_static_rejection(self):
-        _tmp, scen = self._with_temp_catalog()
-        pack = os.path.join(scen, "special-marker")
-        os.makedirs(pack)
-        os.mkfifo(os.path.join(pack, "pack.yaml"))
-
-        self.assertEqual(CI._packs(scen), ("special-marker",))
+        self.assertEqual(
+            CI._packs(scen),
+            ("alpha-pack", "design-notes", "legacy-scenario", "real-pack"),
+        )
 
     def test_symlinked_pack_directory_is_not_followed(self):
         tmp, scen = self._with_temp_catalog()
@@ -381,42 +359,39 @@ class PackDiscoveryTest(unittest.TestCase):
 
         self.assertEqual(CI._packs(missing), ())
 
-    def test_unreadable_catalog_fails_closed_without_raw_exception(self):
-        _tmp, scen = self._with_temp_catalog()
+    def test_missing_explicit_packs_root_fails_closed(self):
+        tmp, _scen = self._with_temp_catalog()
         failures: list[str] = []
-        with mock.patch.object(CI.os, "scandir", side_effect=OSError("secret path")):
-            self.assertEqual(CI._packs(scen, failures), ())
-
-        self.assertEqual(len(failures), 1)
-        self.assertIn("CATALOG DISCOVERY FAILED", failures[0])
-        self.assertNotIn("secret path", failures[0])
-
-    def test_unreadable_candidate_redacts_its_name_and_raw_exception(self):
-        _tmp, scen = self._with_temp_catalog()
-        secret_name = "credential-token"
-        blocked = os.path.join(scen, secret_name)
-        os.makedirs(blocked)
-        real_scandir = os.scandir
-
-        def fail_one(path):
-            if os.path.abspath(path) == os.path.abspath(blocked):
-                raise OSError("raw secret exception")
-            return real_scandir(path)
-
-        failures: list[str] = []
-        with mock.patch.object(CI.os, "scandir", side_effect=fail_one):
-            self.assertEqual(CI._packs(scen, failures), ())
 
         self.assertEqual(
-            failures,
-            ["CATALOG DISCOVERY FAILED: scenarios/<entry>/ could not be inspected"],
+            CI._packs(
+                os.path.join(tmp, "missing"),
+                failures,
+                require_root=True,
+            ),
+            (),
         )
-        self.assertNotIn(secret_name, failures[0])
-        self.assertNotIn("raw secret exception", failures[0])
+        self.assertEqual(
+            failures,
+            ["PACK-ROOT DISCOVERY FAILED: root could not be inspected"],
+        )
+
+    def test_unreadable_catalog_fails_closed_without_raw_exception(self):
+        tmp, _scen = self._with_temp_catalog()
+        packs_root = os.path.join(tmp, "not-a-directory")
+        with open(packs_root, "w", encoding="utf-8") as fh:
+            fh.write("not a pack root\n")
+        failures: list[str] = []
+
+        self.assertEqual(CI._packs(packs_root, failures), ())
+
+        self.assertEqual(len(failures), 1)
+        self.assertIn("PACK-ROOT DISCOVERY FAILED", failures[0])
+        self.assertNotIn(packs_root, failures[0])
 
 
 class AuthorCiDiscoveryFlowTest(unittest.TestCase):
-    def test_main_discovers_once_and_executes_code_only_for_static_valid_packs(self):
+    def test_packs_root_discovers_once_and_executes_code_only_for_static_valid_packs(self):
         valid = CI._AuthorStaticView((), (), (), (), ())
         invalid = CI._AuthorStaticView(("invalid",), (), (), (), ())
         events: list[tuple[str, tuple[str, ...]]] = []
@@ -442,7 +417,7 @@ class AuthorCiDiscoveryFlowTest(unittest.TestCase):
                 mock.patch.object(CI, "check_anti_extension", side_effect=record("anti-extension")), \
                 mock.patch.object(CI, "check_provenance", side_effect=record_with_views("provenance")), \
                 mock.patch.object(CI, "check_golden_checklist", side_effect=record("golden")):
-            self.assertEqual(CI.main(["--repo", tmp]), 0)
+            self.assertEqual(CI.main(["--packs-root", tmp]), 0)
 
         discover.assert_called_once()
         self.assertEqual(events[0], ("static", ("valid", "invalid")))
@@ -452,6 +427,38 @@ class AuthorCiDiscoveryFlowTest(unittest.TestCase):
         ])
         self.assertTrue(all(packs == ("valid", "invalid")
                             for _name, packs in events[3:]))
+
+    def test_explicit_pack_skips_bulk_discovery(self):
+        valid = CI._AuthorStaticView((), (), (), (), ())
+        with tempfile.TemporaryDirectory() as tmp:
+            pack_root = os.path.join(tmp, "one-pack")
+            os.makedirs(pack_root)
+            with mock.patch.object(CI, "_packs") as discover, \
+                    mock.patch.object(
+                        CI, "check_static_contract", return_value={"one-pack": valid}
+                    ) as static_check, \
+                    mock.patch.object(CI, "check_validators"), \
+                    mock.patch.object(CI, "check_tests"), \
+                    mock.patch.object(CI, "check_sdl"), \
+                    mock.patch.object(CI, "check_visibility"), \
+                    mock.patch.object(CI, "check_manifest"), \
+                    mock.patch.object(CI, "check_anti_extension"), \
+                    mock.patch.object(CI, "check_provenance"), \
+                    mock.patch.object(CI, "check_golden_checklist"):
+                self.assertEqual(CI.main(["--pack", pack_root]), 0)
+
+        discover.assert_not_called()
+        static_check.assert_called_once_with(mock.ANY, ("one-pack",))
+
+    def test_missing_explicit_packs_root_cannot_pass(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(
+                CI.main(["--packs-root", os.path.join(tmp, "missing")]),
+                1,
+            )
+
+        self.assertIn("PACK-ROOT DISCOVERY FAILED", output.getvalue())
 
 
 class NewScenarioPackScaffoldTest(unittest.TestCase):
@@ -602,7 +609,7 @@ class CompatibilityManifestGateTest(unittest.TestCase):
         CI.SCEN, CI._REPO = scen, tmp
         try:
             failures: list[str] = []
-            CI.check_manifest(failures)
+            CI.check_manifest(failures, packs=("example-pack",))
         finally:
             CI.SCEN, CI._REPO = orig_scen, orig_repo
 
@@ -615,7 +622,7 @@ class CompatibilityManifestGateTest(unittest.TestCase):
         CI.SCEN, CI._REPO = scen, tmp
         try:
             failures: list[str] = []
-            CI.check_manifest(failures)
+            CI.check_manifest(failures, packs=("example-pack",))
         finally:
             CI.SCEN, CI._REPO = orig_scen, orig_repo
 
@@ -639,7 +646,7 @@ class CompatibilityManifestGateTest(unittest.TestCase):
         CI.SCEN, CI._REPO = scen, tmp
         try:
             failures: list[str] = []
-            CI.check_manifest(failures)
+            CI.check_manifest(failures, packs=("example-pack",))
         finally:
             CI.SCEN, CI._REPO = orig_scen, orig_repo
 
@@ -652,7 +659,7 @@ class CompatibilityManifestGateTest(unittest.TestCase):
         CI.SCEN, CI._REPO = scen, tmp
         try:
             failures: list[str] = []
-            CI.check_manifest(failures)
+            CI.check_manifest(failures, packs=("example-pack",))
         finally:
             CI.SCEN, CI._REPO = orig_scen, orig_repo
 
@@ -683,7 +690,7 @@ class CompatibilityManifestGateTest(unittest.TestCase):
         CI.SCEN, CI._REPO = scen, tmp
         try:
             failures: list[str] = []
-            CI.check_manifest(failures)
+            CI.check_manifest(failures, packs=("example-pack",))
         finally:
             CI.SCEN, CI._REPO = orig_scen, orig_repo
 

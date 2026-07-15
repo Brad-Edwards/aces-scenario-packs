@@ -349,19 +349,36 @@ class CheckAllTests(unittest.TestCase):
         failures = PR.check()
         self.assertEqual(failures, [], "\n".join(failures))
 
-    def test_check_all_uses_shared_discovery_and_surfaces_its_failures(self):
-        def fail_discovery(root, failures):
-            self.assertEqual(root, PR.SCEN)
-            failures.append("CATALOG DISCOVERY FAILED: scenarios directory unreadable")
+    def test_check_packs_root_uses_shared_discovery_and_surfaces_its_failures(self):
+        def fail_discovery(root, failures, *, require_root=False):
+            self.assertEqual(root, "/catalog/packs")
+            self.assertTrue(require_root)
+            failures.append("PACK-ROOT DISCOVERY FAILED: root unreadable")
             return ()
 
         with mock.patch.object(PR.cc, "_packs", side_effect=fail_discovery):
-            failures = PR.check()
+            failures = PR.check(packs_root="/catalog/packs")
 
         self.assertEqual(
             failures,
-            ["CATALOG DISCOVERY FAILED: scenarios directory unreadable"],
+            ["PACK-ROOT DISCOVERY FAILED: root unreadable"],
         )
+
+    def test_check_missing_explicit_packs_root_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            failures = PR.check(packs_root=os.path.join(tmp, "missing"))
+
+        self.assertEqual(
+            failures,
+            ["PACK-ROOT DISCOVERY FAILED: root could not be inspected"],
+        )
+
+    def test_check_accepts_an_explicit_pack_path(self):
+        with tempfile.TemporaryDirectory() as pack_root, \
+                mock.patch.object(PR, "is_releasable", return_value=False) as releasable:
+            self.assertEqual(PR.check([pack_root]), [])
+
+        releasable.assert_called_once_with(pack_root)
 
 
 if __name__ == "__main__":

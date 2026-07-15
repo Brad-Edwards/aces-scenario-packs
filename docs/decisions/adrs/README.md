@@ -21,4 +21,3 @@ once accepted; a later ADR supersedes an earlier one rather than editing it.
 | [0013](0013-separate-consumer-static-validation-from-author-ci.md) | Separate consumer static validation from author CI | Accepted |
 | [0014](0014-consume-aces-concept-authority.md) | Keep governed concept references in ACES concept-authority | Accepted |
 | [0015](0015-attest-python-distribution-build-provenance.md) | Attest Python distribution build provenance | Accepted |
-| [0016](0016-manifest-led-catalog-pack-discovery.md) | Manifest-led catalog pack discovery | Accepted |

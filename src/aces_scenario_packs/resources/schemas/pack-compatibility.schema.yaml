@@ -1,5 +1,5 @@
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://example.com/aces-scenario-pack/scenario-pack-compatibility.schema.yaml"
+$id: "https://aces.dev/schemas/scenario-pack-compatibility-v1.json"
 title: ACES scenario pack compatibility manifest
 description: >
   Product-facing compatibility projection for a scenario pack. pack.yaml stays
@@ -23,8 +23,8 @@ required:
   - validation
 properties:
   schema_version:
-    type: integer
-    const: 1
+    type: string
+    const: "scenario-pack-compatibility/v1"
   pack:
     type: object
     additionalProperties: false
@@ -75,6 +75,9 @@ properties:
         items:
           $ref: "#/$defs/boundary_entry"
       oracle_only:
+        description: >
+          Compatibility label for a restricted non-participant release
+          boundary. It does not define an oracle or any scenario semantics.
         type: array
         items:
           $ref: "#/$defs/boundary_entry"

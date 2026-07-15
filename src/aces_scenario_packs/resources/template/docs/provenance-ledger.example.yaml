@@ -8,7 +8,7 @@
 # reusable-asset-trust-policy/v1 (ACES ADR-071); this ledger carries only the
 # pack-domain licensing/safety/publication facts ACES does not define
 # (ADR 0009/ADR 0010).
-schema_version: 1
+schema_version: "scenario-pack-provenance/v2"
 pack:
   name: example-commercial-pack
   title: "Example Commercial Pack"
@@ -16,7 +16,6 @@ pack:
 
 sources:
   - source_id: mitre-attack
-    kind: framework
     name: "MITRE ATT&CK"
     url: https://attack.mitre.org/
     ref: "ATT&CK v15"
@@ -26,7 +25,6 @@ sources:
     attribution: "© 2015–2026 The MITRE Corporation. ATT&CK® is a registered trademark of The MITRE Corporation."
     used: "Technique IDs for the canonical path mappings."
   - source_id: ctid-ael
-    kind: emulation-corpus
     name: "MITRE CTID — Adversary Emulation Library"
     url: https://github.com/center-for-threat-informed-defense/adversary_emulation_library
     ref: "master @ <commit>"
@@ -38,14 +36,12 @@ sources:
     excluded: "No upstream binaries, Resources/ payloads, or password-protected malware samples."
     captured: "2026-06-21"
   - source_id: original-design
-    kind: original
     name: "ACES original scenario design"
     license: "proprietary"
     usage: reused
     attribution_required: false
     used: "All bespoke SDL, narrative, hosts, identities, and synthetic credentials."
   - source_id: synthetic-seed
-    kind: generated
     name: "Range-generated synthetic dataset"
     license: "proprietary"
     usage: generated-from

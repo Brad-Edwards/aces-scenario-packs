@@ -16,16 +16,24 @@ pip install aces-scenario-packs
 
 This provides the console tools plus the version-matched schemas and template:
 
-- `aces-pack-validate` — validate a pack catalog's content against the contract.
+- `aces-pack-validate` — validate pack content against the contract.
 - `aces-pack-release` — boundary-split build, lint, release, and profile-smoke gate.
 - `aces-new-pack` — scaffold a new pack from the bundled template.
 - `aces-pack-issue-skeleton` — generate a pack work-issue skeleton.
 
-Run the gates from a catalog repository (the tree containing `scenarios/<pack>/`):
+Validate one pack by pointing the tools at its directory:
 
 ```sh
-aces-pack-validate --repo .
-aces-pack-release check --all
+aces-pack-validate --pack ./scenarios/example-pack
+aces-pack-release check --pack ./scenarios/example-pack
+```
+
+As a convenience, a directory containing only pack directories can be checked
+in one command. Every direct child directory is treated as a pack candidate:
+
+```sh
+aces-pack-validate --packs-root ./scenarios
+aces-pack-release check --packs-root ./scenarios
 ```
 
 Consumers can validate one immutably staged pack in-process, without Git,
@@ -51,7 +59,7 @@ locations, never source bodies or absolute paths. See
   - [`docs/scenario-packs.md`](docs/scenario-packs.md) — what a scenario pack is.
   - Layout contract + schemas + template ship as package data under
     [`src/aces_scenario_packs/resources/`](src/aces_scenario_packs/resources/)
-    (`contract/pack-layout.md`, `schemas/`, `template/`, `oracle/`).
+    (`contract/pack-layout.md`, `schemas/`, `template/`).
   - [Architecture Decision Records](docs/decisions/adrs/) — purpose, packaging,
     build/release, SBOM.
 - **Tools** — the package modules under
@@ -80,8 +88,6 @@ python3 -m venv .venv
 pip install -e .
 
 python -m unittest discover -s tests
-aces-pack-validate --repo .
-aces-pack-release check --all
 ```
 
 Releases are managed by **release-please** — merge-driven, nothing hand-run

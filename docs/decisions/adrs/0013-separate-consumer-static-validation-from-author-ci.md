@@ -43,6 +43,41 @@ CLI helpers. Packaged schemas and the existing pack-domain JSON-Schema subset ar
 reused; no duplicate schemas or second schema loader are introduced. ACES SDL is
 validated only through the pinned public ACES parser.
 
+The author-CI executable-discovery contract is closed and pack-relative. Direct
+`validate_*.py` validators are supported only under `sdl/`, `validation/`,
+`profiles/`, and `flags/`, and are invoked with the literal `validate` argument.
+Unittest discovery roots are `sdl/tests`, `validation/tests`, `build/tests`,
+`profiles/tests`, `ctfd/tests`, and the pack-root `tests`. These ordered root
+sets are the single policy seam: discovery does not recursively invent new
+validator roots, infer executable locations from catalog names, or maintain
+downstream-specific skips. Packs, roots, and direct validator filenames are
+ordered deterministically, and a canonical pack-relative execution key is run
+at most once even if future supported roots overlap.
+
+No pack-local process starts until the pack has passed the shared
+descriptor-anchored filesystem inventory used by static validation. A supported
+root or executable reached through a symlink, hardlink, special file,
+non-canonical member, or path outside the opened pack root fails closed instead
+of being skipped or executed. Discovery records descriptor-anchored root and
+member identities, and the gate re-establishes that complete invariant
+immediately before and after every pack-local process. Any replacement,
+addition, removal, or unsafe member blocks the remaining execution phases.
+Commands are argv sequences headed by the current Python interpreter, never
+shell text, and use a contained pack root as their working directory rather than
+an ambient catalog or caller path.
+
+Pack-local validators and tests are trusted author-workflow code, not foreign
+input validation or a sandbox. The CLI must be run only on a trusted catalog
+checkout with least-privilege credentials; this contract does not make executing
+pack code safe for a consumer ingest path. Process output is collected with a
+hard byte bound rather than captured without limit and truncated afterward.
+Only bounded, pack-relative labels and redacted output enter the existing
+author-CI failure envelope; absolute paths, command lines, environment values,
+and raw exception representations do not. A shared internal process runner owns
+the output budget, decode policy, deadline, and abnormal-exit classification so
+validator and unittest adapters cannot drift. It accepts argv and execution
+context as data but does not become a general pack hook or plugin API.
+
 The consumer result covers exactly the static ingest contract:
 
 - bounded, valid `pack.yaml` with the layout contract's identity fields;
@@ -104,6 +139,9 @@ composition rather than boolean options on the library API.
   default API not reaching the network or writing an ACES cache; an author CI
   caller may continue to use ACES resolution under its separately controlled
   environment.
+- Catalog authors have one deterministic executable-discovery contract. Adding
+  another supported root is an intentional pack-contract change to the ordered
+  root policy and its contract tests, not an ad hoc recursive scan.
 
 ## Non-goals
 
@@ -113,3 +151,9 @@ content-manifest/digest verification, acquisition, archive extraction,
 authentication, authorization, storage, promotion, or registry behavior. It
 does not define or extend SDL, trust, scoring, telemetry, oracle, or other
 ACES semantics.
+
+The author-CI execution boundary does not provide process isolation, network or
+filesystem sandboxing, credential brokering, environment schemas, test sharding,
+parallel execution, a generic hook registry, recursive validator discovery, or
+catalog-specific configuration. It does not execute pack-local code from the
+single-pack consumer API.

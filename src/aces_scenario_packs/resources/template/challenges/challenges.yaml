@@ -4,7 +4,6 @@
 challenges: []
   # - flag_id: example-flag
   #   title: "Challenge title"
-  #   category: corporate
   #   difficulty: easy         # easy | medium | hard | insane
   #   points: 100
   #   question: "What is the flag?"

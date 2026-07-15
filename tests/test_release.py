@@ -6,13 +6,14 @@ profile-support consistency, and smoke-tests that delivery-bundle selection
 changes participant exposure. The gate must:
 
   * fail fast when a pack claims a *supported* delivery bundle it does not ship;
-  * separate participant / operator / oracle artifacts into distinct release
-    roots, and keep oracle/operator material out of the participant view;
+  * separate participant / operator / restricted-private artifacts into
+    distinct release roots, and keep restricted material out of the participant
+    view;
   * never leak operator tokens into a packaged participant artifact (the leak
     scan is re-run over the staged participant tier);
   * emit versioned release metadata carrying the pack version, the
     scenario-pack contract version + digest, the supported profiles, and a
-    *bounded* provenance summary (counts/statuses only — no oracle vocabulary,
+    *bounded* provenance summary (counts/statuses only — no restricted operator vocabulary,
     flags, secrets, or customer-specific prose).
 
 All cases use synthetic temp packs so no real scenario pack has to be committed
@@ -25,6 +26,7 @@ import importlib.util
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 import yaml
 
@@ -74,7 +76,7 @@ def _make_pack(root: str, *, delivery_bundles, profile_bundles=False,
     _write(os.path.join(root, "pack.yaml"), yaml.safe_dump(pack_yaml))
 
     compat = {
-        "schema_version": 1,
+        "schema_version": "scenario-pack-compatibility/v1",
         "pack": {"name": "synthpack", "version": "0.1.0", "status": "draft"},
         "artifact_boundaries": boundaries if boundaries is not None else {
             "participant_visible": [{"path": "assets/briefing/", "export": "public"}],
@@ -90,9 +92,9 @@ def _make_pack(root: str, *, delivery_bundles, profile_bundles=False,
     _write(os.path.join(root, "assets", "briefing", "brief.md"), "# Mission brief\n")
 
     prov = {
-        "schema_version": 1,
+        "schema_version": "scenario-pack-provenance/v2",
         "pack": {"name": "synthpack"},
-        "sources": [{"source_id": "orig", "kind": "original-design"}],
+        "sources": [{"source_id": "orig"}],
         "artifacts": [{"artifact_id": "a1", "path": "assets/", "classification": "open"}],
         "content_safety": {
             "no_real_malware": True, "no_real_third_party_targets": True,
@@ -124,7 +126,7 @@ def _make_pack(root: str, *, delivery_bundles, profile_bundles=False,
 class ContractVersionTests(unittest.TestCase):
     def test_reads_version_and_digest_from_readme(self):
         version, digest = PR.load_contract_version()
-        self.assertEqual(version, "2")
+        self.assertEqual(version, "3")
         self.assertTrue(digest.startswith("sha256:"))
         self.assertEqual(len(digest), len("sha256:") + 64)
 
@@ -346,6 +348,37 @@ class CheckAllTests(unittest.TestCase):
     def test_check_all_passes_on_current_repo(self):
         failures = PR.check()
         self.assertEqual(failures, [], "\n".join(failures))
+
+    def test_check_packs_root_uses_shared_discovery_and_surfaces_its_failures(self):
+        def fail_discovery(root, failures, *, require_root=False):
+            self.assertEqual(root, "/catalog/packs")
+            self.assertTrue(require_root)
+            failures.append("PACK-ROOT DISCOVERY FAILED: root unreadable")
+            return ()
+
+        with mock.patch.object(PR.cc, "_packs", side_effect=fail_discovery):
+            failures = PR.check(packs_root="/catalog/packs")
+
+        self.assertEqual(
+            failures,
+            ["PACK-ROOT DISCOVERY FAILED: root unreadable"],
+        )
+
+    def test_check_missing_explicit_packs_root_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            failures = PR.check(packs_root=os.path.join(tmp, "missing"))
+
+        self.assertEqual(
+            failures,
+            ["PACK-ROOT DISCOVERY FAILED: root could not be inspected"],
+        )
+
+    def test_check_accepts_an_explicit_pack_path(self):
+        with tempfile.TemporaryDirectory() as pack_root, \
+                mock.patch.object(PR, "is_releasable", return_value=False) as releasable:
+            self.assertEqual(PR.check([pack_root]), [])
+
+        releasable.assert_called_once_with(pack_root)
 
 
 if __name__ == "__main__":

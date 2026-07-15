@@ -1,34 +1,33 @@
 #!/usr/bin/env python3
-"""Repo-wide scenario-content gate (issue #138).
+"""Scenario-pack author-content gate (issue #138).
 
 Mechanically enforces the scenario-pack contract that was previously "enforced
 by review" — so a regression cannot ship just because a reviewer forgot to run
-the validators. Runs the same checks for EVERY pack under ``scenarios/<name>/``,
-so every present and future pack benefits:
+the validators. Validates one explicit pack or every direct child of an explicit
+packs root:
 
-  1. **Validators** — every ``scenarios/*/sdl/validate_*.py validate`` exits 0.
-  2. **Test suites** — every ``scenarios/*/sdl/tests``,
-     ``scenarios/*/build/tests``, ``scenarios/*/profiles/tests``, and
-     ``scenarios/*/ctfd/tests`` unittest suite passes.
-  3. **Visibility / leak scan** — no operator token (oracle ``S-*`` states,
+  1. **Validators** — every direct ``validate_*.py validate`` under each
+     supported validator root (``sdl``, ``validation``, ``profiles``, ``flags``)
+     exits 0.
+  2. **Test suites** — every supported unittest suite passes: ``sdl/tests``,
+     ``validation/tests``, ``build/tests``, ``profiles/tests``, ``ctfd/tests``,
+     and the pack-root ``tests`` suite.
+  3. **Visibility / leak scan** — no restricted operator token (``S-*`` states,
      ``<n>.<L>`` step ids, ATT&CK technique ids, ``S1.*``/``S2.*`` source
      labels) appears in any participant-facing surface (``assets/content/**``,
      ``assets/briefing/**``). This is *"the single most important invariant of
-     the pack"* (scenario-design.md) — a leaked hidden-path token hands
+     the pack"* (scenario-design.md) — leaked operator action ordering hands
      participants the solution.
   4. **Manifest** — every pack ships a ``pack.yaml``.
   5. **Golden checklist** — every pack carries
      ``docs/golden-readiness-checklist.md`` so final manual participant review
      is planned and auditable.
-  6. **Shared oracle model** — the reusable operator/oracle-only model bundled
-     with this package validates its fixtures and tests without being treated as
-     a scenario pack.
-  7. **Anti-extension guard** — the compatibility schema, the bundled
+  6. **Anti-extension guard** — the compatibility schema, the bundled
      template/example, and every pack carry zero extensions to ACES semantics:
      no ``scoring`` / ``validation_oracle`` / ``telemetry`` / ``lifecycle``
      manifest layer and no ``sdl/`` semantic ledger reintroduces an ACES/runtime
      concept (ADR 0009, issue #83).
-  8. **SDL through ACES** — every pack's ``sdl/*.sdl.yaml`` start state parses
+  7. **SDL through ACES** — every pack's ``sdl/*.sdl.yaml`` start state parses
      and validates through ACES (``aces_sdl.parse_sdl_file``), and every
      ``flags/placement.yaml`` host resolves to a real ``Scenario.nodes`` id.
      SDL is validated *through ACES*, with no SDL schema restated here; the gate
@@ -37,21 +36,26 @@ so every present and future pack benefits:
 Stdlib + PyYAML, plus ACES (``aces-sdl``, exactly pinned per ADR 0011) for SDL
 validation. Run locally exactly as CI does:
 
-    aces-pack-validate --repo .
+    aces-pack-validate --pack ./path/to/pack
+    aces-pack-validate --packs-root ./path/to/packs
 """
 
 from __future__ import annotations
 
 import os
 import re
+import signal
 import subprocess
 import sys
-from collections.abc import Callable, Iterator
+import threading
+from collections.abc import Callable, Iterator, Sequence
 
 import yaml
 
+from aces_scenario_packs import _pack_fs
 from aces_scenario_packs.validation import (
     CONTENT_SAFETY_FLAGS as _SHARED_CONTENT_SAFETY_FLAGS,
+    PackValidationLimits,
     _schema_violations,
     _validate_pack_for_author_ci,
 )
@@ -59,13 +63,12 @@ from aces_scenario_packs.validation import (
 CONTENT_SAFETY_FLAGS = _SHARED_CONTENT_SAFETY_FLAGS
 
 # Canonical contract resources ship inside this installed package (schemas,
-# template, oracle fixtures + model). They are resolved relative to the package,
+# and template). They are resolved relative to the package,
 # never the consumer's working tree.
 _PKG = os.path.dirname(os.path.abspath(__file__))
 _RES = os.path.join(_PKG, "resources")
 _SCHEMAS_DIR = os.path.join(_RES, "schemas")
 _TEMPLATE_DIR = os.path.join(_RES, "template")
-_ORACLE_DIR = os.path.join(_RES, "oracle")
 
 # The catalog under validation is the consumer's tree: <_REPO>/scenarios/<pack>/.
 # Defaults to the current directory; override with --repo, or by setting these
@@ -122,11 +125,6 @@ def provenance_example_path() -> str:
     """Provenance example path."""
     return os.path.join(_TEMPLATE_DIR, "docs", "provenance-ledger.example.yaml")
 
-# Packs are scenarios/<name>/ with a pack.yaml. `_template` is a scaffold and
-# `_oracle` is the shared oracle model, not packs; the gate skips both.
-SKIP = {"_template", "_oracle"}
-
-
 class _AuthorStaticView(object):
     """One shared per-pack static-validation snapshot for author-CI adapters."""
 
@@ -152,19 +150,26 @@ class _AuthorStaticView(object):
         self.sdl_failures = sdl_failures
         self.scenarios = scenarios
 
+    @property
+    def ok(self) -> bool:
+        """Whether the candidate passed the complete shared static contract."""
+        return not any((
+            self.global_failures,
+            self.manifest_failures,
+            self.provenance_failures,
+            self.sdl_failures,
+        ))
+
 
 _AUTHOR_STATIC_CACHE: dict[str, _AuthorStaticView] = {}
 
 # Operator tokens that must never reach participant-facing surfaces.
 TOKEN_PATTERNS = [
-    (re.compile(r"\bS-[A-Z]{3,}\b"), "oracle S-* state"),
+    (re.compile(r"\bS-[A-Z]{3,}\b"), "restricted S-* state"),
     (re.compile(r"\bS[12]\.\d{1,2}\b"), "source label S1.*/S2.*"),
     (re.compile(r"\bT\d{4}(?:\.\d{3})?\b"), "ATT&CK technique id"),
     (re.compile(r"(?<![\w.])(?:10|[1-9])\.[A-Z](?![\w])"), "attack-path step id"),
 ]
-WIZARD_SPIDER_STALE_MILESTONES = re.compile(
-    r"(?<!\d)#(?:36|37|52)\b|issues/(?:36|37|52)\b"
-)
 PARTICIPANT_DIRS = [
     ("assets", "content"),
     ("assets", "briefing"),
@@ -173,54 +178,79 @@ PARTICIPANT_DIRS = [
 TEXT_EXT = {".md", ".txt", ".yaml", ".yml", ".csv", ".json", ".log", ".note"}
 
 
-def _git_lines(args: list[str]) -> list[str]:
-    """Git lines."""
+def _discovery_failure(failures: list[str] | None, location: str) -> None:
+    """Record a bounded discovery failure, or raise for an unwrapped caller."""
+    message = f"PACK-ROOT DISCOVERY FAILED: {location} could not be inspected"
+    if failures is None:
+        raise RuntimeError(message)
+    failures.append(message)
+
+
+def _packs(
+    scenarios_root: str | None = None,
+    failures: list[str] | None = None,
+    *,
+    require_root: bool = False,
+) -> tuple[str, ...]:
+    """Return one sorted snapshot of every direct real child directory."""
+    root = os.path.abspath(scenarios_root or SCEN)
     try:
-        r = subprocess.run(
-            ["git", "-C", _REPO, *args],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        with os.scandir(root) as entries:
+            children = sorted(entries, key=lambda entry: entry.name)
+    except FileNotFoundError:
+        if require_root:
+            _discovery_failure(failures, "root")
+        return ()
     except OSError:
-        return []
-    if r.returncode != 0:
-        return []
-    return [line for line in r.stdout.splitlines() if line.strip()]
+        _discovery_failure(failures, "root")
+        return ()
 
-
-def _is_git_visible_pack_dir(name: str) -> bool:
-    """Is git visible pack dir."""
-    if (_git_lines(["rev-parse", "--is-inside-work-tree"]) != ["true"]
-            or os.path.abspath(SCEN) != os.path.join(os.path.abspath(_REPO), "scenarios")):
-        return True
-    rel = os.path.join("scenarios", name)
-    # Tracked (ls-files) or new local work not yet ignored, so developers still
-    # get manifest/checklist failures before the first commit. Ignored
-    # cache-only directories (stray __pycache__) are excluded by git.
-    return bool(_git_lines(["ls-files", "--", rel])
-                or _git_lines(["status", "--porcelain", "--untracked-files=all", "--", rel]))
-
-
-def _packs() -> list[str]:
-    """Packs."""
-    if not os.path.isdir(SCEN):
-        return []
-    out = []
-    for name in sorted(os.listdir(SCEN)):
-        p = os.path.join(SCEN, name)
-        if name in SKIP or not os.path.isdir(p):
+    packs: list[str] = []
+    for entry in children:
+        try:
+            if not entry.is_dir(follow_symlinks=False):
+                continue
+        except OSError:
+            _discovery_failure(failures, "<entry>/")
             continue
-        if (not os.path.isfile(os.path.join(p, PACK_MANIFEST_FILE))
-                and not _is_git_visible_pack_dir(name)):
-            continue
-        out.append(name)
-    return out
+        packs.append(entry.name)
+    return tuple(packs)
 
 
-# Directories under a pack that ship static `validate_*.py validate` gates. The
-# sdl ledgers (#21–#24) and the delivery-profile bundles (#50) both ship one.
-VALIDATOR_DIRS = ("sdl", "profiles")
+# Author-CI executable-discovery contract (ADR 0013). Both root sets are closed
+# and ordered: discovery never recursively invents new roots, infers locations
+# from catalog names, or maintains downstream-specific skip lists. Adding a root
+# is a deliberate change to these tuples plus a contract test.
+#
+# Direct `validate_*.py validate` gates live under these roots (the sdl ledgers
+# #21-#24, the pack validation harness, the delivery-profile bundles #50, and
+# the flag layer each ship one).
+VALIDATOR_DIRS = ("sdl", "validation", "profiles", "flags")
+# Unittest suites live under these roots; the pack-root `tests` suite is last.
+TEST_DIRS = (
+    "sdl/tests",
+    "validation/tests",
+    "build/tests",
+    "profiles/tests",
+    "ctfd/tests",
+    "tests",
+)
+
+# Subprocess execution budget for pack-local validators and tests. These are
+# process limits (retained output bytes, wall-clock deadline) kept deliberately
+# separate from PackValidationLimits, which bounds static parser input, not a
+# running child (ADR 0013).
+_EXEC_MAX_OUTPUT_BYTES = 64 * 1024
+_EXEC_READ_CHUNK = 64 * 1024
+_EXEC_TIMEOUT_SECONDS = 300
+# Bounded backstop for joining the drainer threads, so a descendant that kept a
+# pipe open can never hang the gate past this grace before the group is killed.
+_EXEC_JOIN_GRACE_SECONDS = 10
+# Bounded tail (per stream) rendered into the failure envelope on a nonzero exit.
+_EXEC_TAIL_CHARS = 1200
+# Inventory member budget, shared with static validation so discovery and
+# execution operate on the same safe inventory (ADR 0012 / ADR 0013).
+_INVENTORY_MAX_MEMBERS = PackValidationLimits().max_members
 
 # SDL-through-ACES gate (#84, ADR 0011). Every pack's start state lives under
 # `sdl/` as one or more `*.sdl.yaml` documents authored in ACES SDL; the
@@ -230,48 +260,348 @@ SDL_DOC_SUFFIX = ".sdl.yaml"
 PLACEMENT_REL = os.path.join("flags", "placement.yaml")
 
 
-def _run_one_validator(vdir: str, fname: str, tag: str, failures: list[str]) -> None:
-    """Run one validator."""
-    r = subprocess.run([sys.executable, os.path.join(vdir, fname), "validate"],
-                       capture_output=True, text=True)
-    if r.returncode != 0:
-        failures.append(f"validator FAILED: {tag}\n{r.stdout[-800:]}{r.stderr[-800:]}")
+class _PipeDrainer(threading.Thread):
+    """Drain one child pipe fully while retaining only its bounded tail.
+
+    Reading continues past the cap (older bytes are dropped) so the child never
+    blocks on a full pipe — that is what keeps the bounded capture deadlock-free
+    — while memory stays bounded to roughly the cap. The retained tail matches
+    the historical `[-N:]` slice that carries the actionable error / summary.
+    """
+
+    def __init__(self, stream: object, cap: int) -> None:
+        super().__init__(daemon=True)
+        self._stream = stream
+        self._cap = cap
+        self._buf = bytearray()
+
+    def run(self) -> None:
+        try:
+            while chunk := self._stream.read(_EXEC_READ_CHUNK):
+                self._buf.extend(chunk)
+                if len(self._buf) > self._cap:
+                    del self._buf[: len(self._buf) - self._cap]
+        finally:
+            self._stream.close()
+
+    def text(self) -> str:
+        """Bounded tail decoded for the failure envelope."""
+        return bytes(self._buf).decode("utf-8", errors="replace")
+
+
+class _ProcOutcome(object):
+    """The bounded, classified result of one pack-local subprocess."""
+
+    __slots__ = ("status", "returncode", "stdout", "stderr")
+
+    def __init__(self, status: str, returncode: int | None,
+                 stdout: str, stderr: str) -> None:
+        self.status = status
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def _killpg(pgid: int) -> None:
+    """SIGKILL an entire child process group, ignoring an already-gone group."""
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except OSError:
+        pass
+
+
+def _run_pack_process(argv: list[str], cwd: str) -> _ProcOutcome:
+    """Run one pack-local command under the shared output/deadline budget.
+
+    Shared by the validator and unittest adapters so their byte cap, decode
+    policy, deadline, and abnormal-exit classification cannot drift (ADR 0013).
+    ``argv`` is a literal sequence headed by ``sys.executable`` (never shell
+    text); ``cwd`` is the contained pack root.
+
+    The child runs in its own process group (``start_new_session``) so a
+    descendant that inherited the pipe write-ends is killed with it and cannot
+    outlive the deadline — or the direct child — holding the drainers blocked on
+    ``read``. The drainer joins are bounded and, if a descendant still holds a
+    pipe after the direct child ends, the group is killed so the pipes reach EOF;
+    a wedged descendant can never hang the gate. Both pipes are drained under a
+    hard byte cap rather than captured without limit and truncated afterward.
+    """
+    proc: subprocess.Popen[bytes] | None = None
+    try:
+        child_env = os.environ.copy()
+        child_env["PYTHONDONTWRITEBYTECODE"] = "1"
+        proc = subprocess.Popen(
+            argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env=child_env, start_new_session=True)
+    except OSError:
+        status, returncode, stdout, stderr = "launch-failed", None, "", ""
+    if proc is not None:
+        # start_new_session makes the child its own process-group leader.
+        pgid = proc.pid
+        out = _PipeDrainer(proc.stdout, _EXEC_MAX_OUTPUT_BYTES)
+        err = _PipeDrainer(proc.stderr, _EXEC_MAX_OUTPUT_BYTES)
+        out.start()
+        err.start()
+        timed_out = False
+        try:
+            proc.wait(timeout=_EXEC_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            _killpg(pgid)
+            proc.wait()
+        # A successful direct child may still have live descendants. Always
+        # terminate the remaining group before waiting for pipe EOF.
+        _killpg(pgid)
+        out.join(_EXEC_JOIN_GRACE_SECONDS)
+        err.join(_EXEC_JOIN_GRACE_SECONDS)
+        if out.is_alive() or err.is_alive():
+            _killpg(pgid)
+            out.join(_EXEC_JOIN_GRACE_SECONDS)
+            err.join(_EXEC_JOIN_GRACE_SECONDS)
+        stdout, stderr = out.text(), err.text()
+        rc = proc.returncode
+        if timed_out:
+            status, returncode = "timeout", None
+        elif rc == 0:
+            status, returncode = "ok", 0
+        elif rc < 0:
+            status, returncode = "signal", rc
+        else:
+            status, returncode = "failed", rc
+    return _ProcOutcome(status, returncode, stdout, stderr)
+
+
+def _record_outcome(kind: str, tag: str, outcome: _ProcOutcome,
+                    failures: list[str]) -> None:
+    """Render one shared process outcome into the bounded failure envelope.
+
+    Only the bounded, pack-relative ``tag`` and a bounded decoded tail enter the
+    envelope; the command line, absolute paths, and environment never do
+    (ADR 0013). This preserves — without weakening — the existing posture: the
+    visibility scan owns operator-token redaction, and the tail is size-bounded
+    exactly as the historical ``[-N:]`` slice was.
+    """
+    if outcome.status == "ok":
+        summary = ""
+        if outcome.stderr.strip():
+            summary = f" ({outcome.stderr.strip().splitlines()[-1]})"
+        print(f"  [ok] {tag}{summary}")
     else:
-        print(f"  [ok] {tag}")
+        if outcome.status == "launch-failed":
+            failure = f"{kind} LAUNCH FAILED: {tag}"
+        elif outcome.status == "timeout":
+            failure = f"{kind} TIMED OUT after {_EXEC_TIMEOUT_SECONDS}s: {tag}"
+        elif outcome.status == "signal":
+            failure = f"{kind} KILLED by signal {-outcome.returncode}: {tag}"
+        else:
+            tail = (outcome.stdout[-_EXEC_TAIL_CHARS:]
+                    + outcome.stderr[-_EXEC_TAIL_CHARS:])
+            failure = f"{kind} FAILED: {tag}\n{tail}"
+        failures.append(failure)
 
 
-def _check_validator_dir(pack: str, sub: str, failures: list[str]) -> None:
-    """Check validator dir."""
-    vdir = os.path.join(SCEN, pack, sub)
-    if not os.path.isdir(vdir):
-        return
-    for fname in sorted(os.listdir(vdir)):
-        if fname.startswith("validate_") and fname.endswith(".py"):
-            _run_one_validator(vdir, fname, f"{pack}/{sub}/{fname}", failures)
+def _stat_identity(value: os.stat_result) -> tuple[int, int, int, int, int, int, int]:
+    """Return the stable fields used to detect member replacement."""
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_mode,
+        value.st_nlink,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
 
 
-def check_validators(failures: list[str]) -> None:
-    """Check validators."""
-    for pack in _packs():
-        for sub in VALIDATOR_DIRS:
-            _check_validator_dir(pack, sub, failures)
+def _capture_execution_snapshot(
+    root_fd: int,
+) -> tuple[tuple[str, ...], tuple[tuple[str, tuple[int, ...]], ...]]:
+    """Capture the safe inventory and descriptor-anchored file identities."""
+    inventory = _pack_fs.inventory(
+        root_fd, max_members=_INVENTORY_MAX_MEMBERS)
+    identities: list[tuple[str, tuple[int, ...]]] = []
+    for rel in inventory:
+        fd = _pack_fs.open_member(root_fd, rel)
+        try:
+            identities.append((rel, _stat_identity(os.fstat(fd))))
+        finally:
+            os.close(fd)
+    return inventory, tuple(identities)
 
 
-def check_tests(failures: list[str]) -> None:
-    """Check tests."""
-    for pack in _packs():
-        for sub in ("sdl/tests", "build/tests", "profiles/tests", "ctfd/tests"):
-            d = os.path.join(SCEN, pack, sub)
-            if not os.path.isdir(d):
+class _ExecutablePack(object):
+    """One statically valid pack bound to a safe execution snapshot."""
+
+    __slots__ = (
+        "blocked",
+        "identities",
+        "inventory",
+        "root",
+        "root_fd",
+        "root_identity",
+    )
+
+    def __init__(
+        self,
+        root: str,
+        root_fd: int,
+        inventory: tuple[str, ...],
+        identities: tuple[tuple[str, tuple[int, ...]], ...],
+    ) -> None:
+        self.root = root
+        self.root_fd = root_fd
+        self.root_identity = _stat_identity(os.fstat(root_fd))
+        self.inventory = inventory
+        self.identities = identities
+        self.blocked = False
+
+
+def _open_safe_pack(
+    pack: str, label: str, failures: list[str],
+) -> _ExecutablePack | None:
+    """Open one pack root and build its safe inventory, or fail closed.
+
+    Returns an execution snapshot with its root descriptor open (the caller must
+    close it), or ``None`` after recording a stable refusal. No pack code runs
+    unless the statically valid pack also passes this descriptor-anchored
+    inventory and identity capture (ADR 0013).
+    """
+    pack_root = os.path.join(SCEN, pack)
+    try:
+        root, root_fd = _pack_fs.open_root(pack_root)
+    except _pack_fs.PackFilesystemError:
+        failures.append(
+            f"{label} UNSAFE: scenarios/{pack}: pack root is not a safe directory")
+        return None
+    try:
+        inventory, identities = _capture_execution_snapshot(root_fd)
+    except _pack_fs.PackFilesystemError as exc:
+        os.close(root_fd)
+        detail = ("member count exceeds the validation limit"
+                  if str(exc) == "pack member count exceeds the validation limit"
+                  else "contains an unsafe filesystem member")
+        failures.append(f"{label} UNSAFE: scenarios/{pack}: {detail}")
+        return None
+    return _ExecutablePack(root, root_fd, inventory, identities)
+
+
+def _discover_validators(inventory: Sequence[str]) -> list[str]:
+    """Direct ``<root>/validate_*.py`` members, in policy-then-name order."""
+    found: list[tuple[int, str, str]] = []
+    for rel in inventory:
+        head, _, tail = rel.partition("/")
+        if (head in VALIDATOR_DIRS and rel.count("/") == 1
+                and tail.startswith("validate_") and tail.endswith(".py")):
+            found.append((VALIDATOR_DIRS.index(head), tail, rel))
+    return [rel for _idx, _tail, rel in sorted(found)]
+
+
+def _discover_test_roots(inventory: Sequence[str]) -> list[str]:
+    """Supported test roots present in the inventory, in closed-policy order."""
+    return [sub for sub in TEST_DIRS
+            if any(rel.startswith(sub + "/") for rel in inventory)]
+
+
+def _execution_snapshot_unchanged(
+    pack: str,
+    executable: _ExecutablePack,
+    failures: list[str],
+) -> bool:
+    """Re-establish the inventory and identity invariant around each process."""
+    if executable.blocked:
+        return False
+    try:
+        path_stat = os.stat(executable.root, follow_symlinks=False)
+        inventory, identities = _capture_execution_snapshot(executable.root_fd)
+    except (OSError, _pack_fs.PackFilesystemError):
+        inventory, identities = (), ()
+        path_stat = None
+    if (
+        path_stat is None
+        or _stat_identity(path_stat) != executable.root_identity
+        or inventory != executable.inventory
+        or identities != executable.identities
+    ):
+        executable.blocked = True
+        failures.append(
+            f"pack-local execution CHANGED (rejected): {pack}: "
+            "filesystem identity changed after static validation"
+        )
+        return False
+    return True
+
+
+def discover_executables(
+    packs: Sequence[str], failures: list[str],
+) -> dict[str, _ExecutablePack]:
+    """Establish execution snapshots for statically valid packs only.
+
+    Both execution phases (validators, tests) consume this single map instead of
+    independently re-enumerating packs and rebuilding the inventory, so discovery
+    and execution operate on one safe inventory established up front (ADR 0013).
+    Each eligible pack retains an open root descriptor and member-identity
+    snapshot. The caller closes every descriptor after both phases. A pack that
+    failed static validation is never passed here; an unsafe runnable pack is
+    recorded once and excluded, so no pack-local process runs for it.
+    """
+    eligible: dict[str, _ExecutablePack] = {}
+    for pack in packs:
+        safe = _open_safe_pack(pack, "pack-local execution", failures)
+        if safe is not None:
+            eligible[pack] = safe
+    return eligible
+
+
+def close_executables(eligible: dict[str, _ExecutablePack]) -> None:
+    """Close every pack root descriptor opened by :func:`discover_executables`."""
+    for executable in eligible.values():
+        os.close(executable.root_fd)
+
+
+def check_validators(
+    eligible: dict[str, _ExecutablePack], failures: list[str],
+) -> None:
+    """Run every eligible pack's ``validate_*.py validate`` gates, once each."""
+    for pack, executable in eligible.items():
+        seen: set[str] = set()
+        for rel in _discover_validators(executable.inventory):
+            if rel in seen:
                 continue
-            r = subprocess.run(
-                [sys.executable, "-m", "unittest", "discover", "-s", d],
-                capture_output=True, text=True, cwd=_REPO)
-            tag = f"{pack}/{sub}"
-            if r.returncode != 0:
-                failures.append(f"tests FAILED: {tag}\n{r.stderr[-1200:]}")
-            else:
-                print(f"  [ok] {tag} ({r.stderr.strip().splitlines()[-1] if r.stderr else 'ok'})")
+            seen.add(rel)
+            tag = f"{pack}/{rel}"
+            if not _execution_snapshot_unchanged(pack, executable, failures):
+                break
+            _record_outcome(
+                "validator", tag,
+                _run_pack_process(
+                    [sys.executable, rel, "validate"], executable.root),
+                failures)
+            if not _execution_snapshot_unchanged(pack, executable, failures):
+                break
+
+
+def check_tests(
+    eligible: dict[str, _ExecutablePack], failures: list[str],
+) -> None:
+    """Run every eligible pack's unittest suites once, deterministically."""
+    for pack, executable in eligible.items():
+        if executable.blocked:
+            continue
+        seen: set[str] = set()
+        for sub in _discover_test_roots(executable.inventory):
+            if sub in seen:
+                continue
+            seen.add(sub)
+            if not _execution_snapshot_unchanged(pack, executable, failures):
+                break
+            _record_outcome(
+                "tests", f"{pack}/{sub}",
+                _run_pack_process(
+                    [sys.executable, "-m", "unittest", "discover", "-s", sub],
+                    executable.root),
+                failures)
+            if not _execution_snapshot_unchanged(pack, executable, failures):
+                break
 
 
 def _load_aces_sdl() -> tuple[Callable[..., object], type[BaseException]]:
@@ -369,6 +699,10 @@ def _partition_author_static_error(
         manifest_failures.append(
             f"compatibility manifest INVALID: scenarios/{pack}/{detail}: {code}"
         )
+    elif code.startswith("challenges."):
+        global_failures.append(
+            f"CHALLENGE INVALID: scenarios/{pack}/{detail}: {code}"
+        )
     else:
         global_failures.append(f"PACK STATIC INVALID: scenarios/{pack}: {code}")
 
@@ -405,11 +739,14 @@ def _author_static_view(pack: str) -> _AuthorStaticView:
     return view
 
 
-def check_static_contract(failures: list[str]) -> dict[str, _AuthorStaticView]:
+def check_static_contract(
+    failures: list[str],
+    packs: Sequence[str] | None = None,
+) -> dict[str, _AuthorStaticView]:
     """Validate and report every pack's shared static contract exactly once."""
 
     views: dict[str, _AuthorStaticView] = {}
-    for pack in _packs():
+    for pack in packs if packs is not None else _packs():
         view = _author_static_view(pack)
         views[pack] = view
         failures.extend(view.global_failures)
@@ -469,6 +806,7 @@ def _check_pack_sdl(
 def check_sdl(
     failures: list[str],
     static_views: dict[str, _AuthorStaticView] | None = None,
+    packs: Sequence[str] | None = None,
 ) -> None:
     """Validate every pack's ``sdl/`` through ACES and cross-check flag placement.
 
@@ -485,7 +823,7 @@ def check_sdl(
             "SDL VALIDATION UNAVAILABLE: aces-sdl (pinned dependency, ADR 0011) "
             f"is not importable: {exc}")
         return
-    for pack in _packs():
+    for pack in packs if packs is not None else _packs():
         _check_pack_sdl(
             pack,
             failures,
@@ -509,7 +847,7 @@ def _token_leaks(path: str) -> list[tuple[str, int]]:
     off participant-facing surfaces; the CI log is itself a quasi-public surface,
     so the report must not disclose the match (issue #138). Echoing the raw match
     obviously leaks it, but so does any token-*derived* verifier: the scanned
-    vocabularies (oracle ``S-*`` states, ATT&CK technique ids, step ids) are
+    vocabularies (restricted ``S-*`` states, ATT&CK technique ids, step ids) are
     low-entropy, so even a truncated hash is reversible by precomputation. The
     class label plus ``path:line`` is enough for an operator to find the match
     locally without the gate disclosing it.
@@ -530,7 +868,8 @@ def _participant_roots(pack: str) -> list[str]:
     participant surfaces (#50): ``profiles/_shared`` and every
     ``profiles/<bundle>/participant`` directory. Operator bundle dirs
     (``profiles/<bundle>/operator``) are intentionally excluded; they may
-    legitimately cite the oracle. New bundles are covered automatically.
+    legitimately cite restricted operator material. New bundles are covered
+    automatically.
     """
     roots = [os.path.join(SCEN, pack, *parts) for parts in PARTICIPANT_DIRS]
     profiles = os.path.join(SCEN, pack, "profiles")
@@ -545,9 +884,12 @@ def _participant_roots(pack: str) -> list[str]:
     return roots
 
 
-def check_visibility(failures: list[str]) -> None:
+def check_visibility(
+    failures: list[str],
+    packs: Sequence[str] | None = None,
+) -> None:
     """Check visibility."""
-    for pack in _packs():
+    for pack in packs if packs is not None else _packs():
         for root in _participant_roots(pack):
             if not os.path.isdir(root):
                 continue
@@ -558,92 +900,6 @@ def check_visibility(failures: list[str]) -> None:
                         f"VISIBILITY LEAK: {rel}:{line_no} contains a {label} "
                         f"(match redacted) in a participant-facing file")
             print(f"  [ok] {os.path.relpath(root, SCEN)} clean")
-
-
-def _wizard_spider_drift_files() -> list[str]:
-    """Files where the closed Wizard Spider milestone plan must not reappear."""
-    roots = [os.path.join(SCEN, "wizard-spider")]
-    files: list[str] = []
-    for root in roots:
-        if os.path.isdir(root):
-            files.extend(_iter_text_files(root))
-    original_preflight = os.path.join(
-        SCEN, "design-notes", "wizard-spider-scenario-contract-preflight-32.md")
-    if os.path.isfile(original_preflight):
-        files.append(original_preflight)
-    return sorted(set(files))
-
-
-def check_wizard_spider_pack_drift(failures: list[str]) -> None:
-    """Block reintroducing the closed scoring/profile milestone plan.
-
-    Issue #207 replaced the canceled Wizard Spider scoring/profile/runtime plan
-    with the current pack-layer sequence (#208-#214). This gate is deliberately
-    narrow: it prevents stale closed issue references from steering future
-    Wizard Spider work back toward #36/#37/#52, while leaving other packs'
-    historical scoring/profile layers untouched.
-    """
-    scanned = 0
-    for fp in _wizard_spider_drift_files():
-        scanned += 1
-        with open(fp, "r", encoding="utf-8", errors="replace") as fh:
-            body = fh.read()
-        if m := WIZARD_SPIDER_STALE_MILESTONES.search(body):
-            rel = os.path.relpath(fp, _REPO)
-            line_no = body.count("\n", 0, m.start()) + 1
-            failures.append(
-                f"WIZARD-SPIDER PACK DRIFT: {rel}:{line_no} references the "
-                "closed #36/#37/#52 scoring/profile plan; use the current "
-                "#208-#214 pack-layer sequence")
-    if scanned:
-        print(f"  [ok] wizard-spider pack drift scan ({scanned} files)")
-
-
-def _shared_oracle_model_file() -> str:
-    """Shared oracle model file."""
-    return os.path.join(_PKG, "oracle_model.py")
-
-
-def _shared_oracle_fixture_paths() -> list[str]:
-    """Shared oracle fixture paths."""
-    fixtures = os.path.join(_ORACLE_DIR, "fixtures")
-    if not os.path.isdir(fixtures):
-        return []
-    return [
-        os.path.join(fixtures, name)
-        for name in sorted(os.listdir(fixtures))
-        if name.endswith((".yaml", ".yml"))
-    ]
-
-
-def check_shared_oracle_model(failures: list[str]) -> None:
-    """Smoke-check the packaged shared oracle model against its shipped fixtures.
-
-    The model and fixtures ship inside this package; the package's own test suite
-    exercises the model's behaviour. This gate only confirms the shipped model
-    validates its shipped fixtures, so a broken release is caught in the field.
-    """
-    model = _shared_oracle_model_file()
-    fixtures = _shared_oracle_fixture_paths()
-
-    if not os.path.isfile(model):
-        failures.append("shared oracle model MISSING from package")
-        return
-    if not fixtures:
-        failures.append("shared oracle fixtures MISSING from package")
-        return
-
-    r = subprocess.run(
-        [sys.executable, model, "validate", *fixtures],
-        capture_output=True,
-        text=True,
-    )
-    if r.returncode != 0:
-        failures.append(
-            "shared oracle fixtures FAILED:\n"
-            f"{r.stdout[-1200:]}{r.stderr[-1200:]}")
-    else:
-        print(f"  [ok] shared oracle fixtures ({len(fixtures)} files)")
 
 
 def _load_yaml(path: str, failures: list[str], label: str) -> object:
@@ -897,10 +1153,11 @@ def check_compatibility_schema_example(failures: list[str]) -> None:
 def check_manifest(
     failures: list[str],
     static_views: dict[str, _AuthorStaticView] | None = None,
+    packs: Sequence[str] | None = None,
 ) -> None:
     """Check manifest."""
     check_compatibility_schema_example(failures)
-    for pack in _packs():
+    for pack in packs if packs is not None else _packs():
         pack_yaml_path = os.path.join(SCEN, pack, PACK_MANIFEST_FILE)
         if not os.path.isfile(pack_yaml_path):
             failures.append(f"manifest MISSING: scenarios/{pack}/{PACK_MANIFEST_FILE}")
@@ -1108,10 +1365,11 @@ def check_provenance_schema_example(failures: list[str]) -> None:
 def check_provenance(
     failures: list[str],
     static_views: dict[str, _AuthorStaticView] | None = None,
+    packs: Sequence[str] | None = None,
 ) -> None:
     """Check provenance."""
     check_provenance_schema_example(failures)
-    for pack in _packs():
+    for pack in packs if packs is not None else _packs():
         pack_yaml_path = os.path.join(SCEN, pack, PACK_MANIFEST_FILE)
         if not os.path.isfile(pack_yaml_path):
             # check_manifest already reports the missing pack manifest
@@ -1128,9 +1386,12 @@ def check_provenance(
         print(f"  [ok] {pack}/{PACK_MANIFEST_FILE} provenance")
 
 
-def check_golden_checklist(failures: list[str]) -> None:
+def check_golden_checklist(
+    failures: list[str],
+    packs: Sequence[str] | None = None,
+) -> None:
     """Check golden checklist."""
-    for pack in _packs():
+    for pack in packs if packs is not None else _packs():
         checklist = os.path.join(SCEN, pack, "docs", "golden-readiness-checklist.md")
         if not os.path.isfile(checklist):
             failures.append(
@@ -1218,7 +1479,10 @@ def _check_pack_no_extension_layers(pack: str, failures: list[str]) -> None:
                 "ACES-semantic ledger; sdl/ holds ACES SDL documents only (ADR 0009)")
 
 
-def check_anti_extension(failures: list[str]) -> None:
+def check_anti_extension(
+    failures: list[str],
+    packs: Sequence[str] | None = None,
+) -> None:
     """Fail if the format or any pack reintroduces a removed ACES extension.
 
     ADR 0009 makes this repository ACES-subordinate with zero extensions to ACES
@@ -1230,7 +1494,7 @@ def check_anti_extension(failures: list[str]) -> None:
     before = len(failures)
     _check_schema_no_extension_layers(failures)
     _check_packaged_manifest_no_extension_layers(failures)
-    for pack in _packs():
+    for pack in packs if packs is not None else _packs():
         _check_pack_no_extension_layers(pack, failures)
     if len(failures) == before:
         print(f"  [ok] anti-extension guard ({len(FORBIDDEN_MANIFEST_LAYERS)} "
@@ -1242,38 +1506,64 @@ def main(argv: list[str] | None = None) -> int:
     global _REPO, SCEN
     import argparse
     parser = argparse.ArgumentParser(
-        description="Validate a scenario-pack catalog against the ACES pack contract.")
-    parser.add_argument(
-        "--repo", default=_REPO,
-        help="Catalog root containing scenarios/<pack>/ (default: current directory).")
+        description="Validate scenario-pack source against the ACES pack contract.")
+    targets = parser.add_mutually_exclusive_group()
+    targets.add_argument("--pack", help="Path to one pack directory.")
+    targets.add_argument(
+        "--packs-root",
+        help="Directory whose direct child directories are all pack candidates.",
+    )
+    targets.add_argument(
+        "--repo",
+        help="Legacy catalog root containing scenarios/<pack>/ (default: current directory).",
+    )
     args = parser.parse_args(argv)
-    _REPO = os.path.abspath(args.repo)
-    SCEN = os.path.join(_REPO, "scenarios")
     _AUTHOR_STATIC_CACHE.clear()
 
     failures: list[str] = []
-    print("== shared oracle model ==")
-    check_shared_oracle_model(failures)
-    print("== validators ==")
-    check_validators(failures)
-    print("== test suites ==")
-    check_tests(failures)
+    if args.pack:
+        pack_root = os.path.abspath(args.pack)
+        if not os.path.isdir(pack_root):
+            parser.error(f"pack directory not found: {args.pack}")
+        _REPO = os.path.dirname(pack_root)
+        SCEN = _REPO
+        packs = (os.path.basename(pack_root),)
+    elif args.packs_root:
+        _REPO = os.path.abspath(args.packs_root)
+        SCEN = _REPO
+        packs = _packs(SCEN, failures, require_root=True)
+    else:
+        _REPO = os.path.abspath(args.repo or os.getcwd())
+        SCEN = os.path.join(_REPO, "scenarios")
+        packs = _packs(SCEN, failures)
     print("== static pack contract ==")
-    static_views = check_static_contract(failures)
+    static_views = check_static_contract(failures, packs)
+    runnable_packs = tuple(
+        pack for pack in packs
+        if (view := static_views.get(pack)) is not None and view.ok
+    )
+    # Only packs that passed the static contract are eligible to execute code.
+    # One descriptor-anchored snapshot is shared by both execution phases.
+    eligible = discover_executables(runnable_packs, failures)
+    try:
+        print("== validators ==")
+        check_validators(eligible, failures)
+        print("== test suites ==")
+        check_tests(eligible, failures)
+    finally:
+        close_executables(eligible)
     print("== sdl (ACES) ==")
-    check_sdl(failures, static_views)
+    check_sdl(failures, static_views, packs)
     print("== visibility scan ==")
-    check_visibility(failures)
-    print("== pack drift scan ==")
-    check_wizard_spider_pack_drift(failures)
+    check_visibility(failures, packs)
     print("== manifests ==")
-    check_manifest(failures, static_views)
+    check_manifest(failures, static_views, packs)
     print("== anti-extension guard ==")
-    check_anti_extension(failures)
+    check_anti_extension(failures, packs)
     print("== provenance ledgers ==")
-    check_provenance(failures, static_views)
+    check_provenance(failures, static_views, packs)
     print("== golden readiness checklists ==")
-    check_golden_checklist(failures)
+    check_golden_checklist(failures, packs)
     print()
     if failures:
         print(f"SCENARIO-CONTENT CI: FAIL ({len(failures)} issue(s))")

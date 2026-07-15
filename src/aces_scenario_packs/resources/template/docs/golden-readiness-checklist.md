@@ -8,7 +8,7 @@ the boxes only for the run that actually proved them.
 
 - [ ] Scenario contract and pack skeleton exist.
 - [ ] Topology, assets, and reference-triangle design are complete.
-- [ ] Hidden path, affordance ledger, objective oracle, and validation model are complete.
+- [ ] Attacker behavior is specified in ACES participant semantics.
 - [ ] Flag, challenge, and reference CTFd layer are complete, or explicitly out of scope.
 - [ ] Delivery profile bundles are complete, or explicitly out of scope.
 - [ ] Golden build implementation exists in the declared live infrastructure.
@@ -24,11 +24,11 @@ the boxes only for the run that actually proved them.
 - [ ] The participant entry surface exists, is documented, and is reachable.
 - [ ] The full happy path is executed manually from the participant surface, command by command.
 - [ ] Operator channels such as SSM, Terraform, cloud consoles, generated passwords, root/SYSTEM shells, and database consoles are used only for provisioning, diagnostics, reset, observation, or teardown.
-- [ ] Every required objective, oracle state, flag, and success condition is reached from the intended participant privilege context.
+- [ ] Every required ACES objective, flag, and success condition is reached from the intended participant privilege context.
 - [ ] Negative gates prove objectives/flags are not trivially reachable before the required action or privilege.
 - [ ] Reset, persistence, survival, or cleanup behavior works where claimed.
 - [ ] Automated rehearsal passes against the same golden build profile.
-- [ ] The human walkthrough and automated rehearsal agree path-for-path.
+- [ ] The human walkthrough and automated rehearsal exercise the same declared ACES behavior and objectives.
 - [ ] Durable evidence is committed as a rehearsal report.
 - [ ] Teardown is run and verified; no live range resources remain.
 - [ ] `pack.yaml.status: golden` is set only after the above proof exists.

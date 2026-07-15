@@ -14,7 +14,7 @@
 # Distribution classes (open | redistributable | internal-only | commercial-only
 # | generated | customer-specific) describe publishing/redistribution rights and
 # are SEPARATE from pack.compatibility.yaml's runtime-visibility export values.
-schema_version: 1
+schema_version: "scenario-pack-provenance/v2"
 pack:
   name: <name>                   # must match pack.yaml name
 
@@ -23,7 +23,6 @@ pack:
 # stable source_id artifacts can cite. At least one row is required.
 sources:
   - source_id: original-design
-    kind: original               # framework|emulation-corpus|tooling|dataset|research|original|generated|customer-overlay
     name: "ACES original scenario design"
     license: "proprietary"       # SPDX id, or proprietary|internal|MITRE ATT&CK Terms of Use|n-a
     usage: reused                # derived|adapted|referenced|reused|reimplemented|generated-from|excluded

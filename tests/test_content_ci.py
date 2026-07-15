@@ -7,7 +7,7 @@ token-independent locator (file path + line number), and must NOT emit the raw
 token body OR any token-derived verifier (e.g. a hash of the match) — otherwise
 the gate that exists to keep operator tokens off participant-facing surfaces
 would itself leak them into the (quasi-public) Actions log. The operator-token
-vocabularies are low-entropy (oracle states, ATT&CK technique ids), so even a
+vocabularies are low-entropy (operator states, ATT&CK technique ids), so even a
 truncated digest is reversible by precomputation and is not acceptable
 (issue #138).
 """
@@ -16,10 +16,13 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import io
 import os
 import shutil
 import tempfile
+import time
 import unittest
+from contextlib import redirect_stdout
 from unittest import mock
 
 import yaml
@@ -54,12 +57,12 @@ SCAFFOLD = _load_scaffold_module()
 
 # Representative operator tokens that must never reach a participant surface.
 TOKEN_EXAMPLES = [
-    ("oracle", "S-EXFILSTAGE"),   # oracle S-* state
+    ("restricted S-* state", "S-EXFILSTAGE"),
     ("source label", "S1.12"),    # source label S1.*/S2.*
     ("ATT&CK", "T1059.003"),      # ATT&CK technique id
     ("attack-path", "7.B"),       # attack-path step id
 ]
-ORACLE_TOKEN = TOKEN_EXAMPLES[0][1]
+OPERATOR_STATE_TOKEN = TOKEN_EXAMPLES[0][1]
 TECH_TOKEN = TOKEN_EXAMPLES[2][1]
 
 
@@ -103,6 +106,9 @@ class VisibilityScanRedactionTest(unittest.TestCase):
         scen = os.path.join(tmp, "scenarios")
         content = os.path.join(scen, "fakepack", "assets", "content")
         os.makedirs(content)
+        with open(os.path.join(scen, "fakepack", "pack.yaml"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("name: fakepack\n")
         with open(os.path.join(content, "leak.md"), "w", encoding="utf-8") as fh:
             fh.write(f"oops the answer is {TECH_TOKEN}\n")
 
@@ -128,6 +134,9 @@ class VisibilityScanRedactionTest(unittest.TestCase):
         scen = os.path.join(tmp, "scenarios")
         challenges = os.path.join(scen, "fakepack", "challenges")
         os.makedirs(challenges)
+        with open(os.path.join(scen, "fakepack", "pack.yaml"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("name: fakepack\n")
         with open(os.path.join(challenges, "challenge.md"), "w",
                   encoding="utf-8") as fh:
             fh.write(f"challenge copy leaked {TECH_TOKEN}\n")
@@ -145,87 +154,6 @@ class VisibilityScanRedactionTest(unittest.TestCase):
         self.assertIn("challenges/challenge.md", blob)
         self.assertNotIn(TECH_TOKEN, blob)
         self.assertIn(":1", blob)
-
-
-class WizardSpiderPackDriftTest(unittest.TestCase):
-    def _with_temp_repo(self):
-        tmp = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, tmp)
-        scen = os.path.join(tmp, "scenarios")
-        os.makedirs(os.path.join(scen, "wizard-spider"), exist_ok=True)
-        os.makedirs(os.path.join(scen, "design-notes"), exist_ok=True)
-        return tmp, scen
-
-    def test_stale_closed_milestone_reference_is_flagged(self):
-        tmp, scen = self._with_temp_repo()
-        stale = os.path.join(scen, "wizard-spider", "README.md")
-        with open(stale, "w", encoding="utf-8") as fh:
-            fh.write("Future scoring work remains issue #36.\n")
-
-        orig_scen, orig_repo = CI.SCEN, CI._REPO
-        CI.SCEN, CI._REPO = scen, tmp
-        try:
-            failures: list[str] = []
-            CI.check_wizard_spider_pack_drift(failures)
-        finally:
-            CI.SCEN, CI._REPO = orig_scen, orig_repo
-
-        blob = "\n".join(failures)
-        self.assertIn("WIZARD-SPIDER PACK DRIFT", blob)
-        self.assertIn("README.md", blob)
-
-    def test_corrected_sequence_is_clean(self):
-        tmp, scen = self._with_temp_repo()
-        clean = os.path.join(scen, "wizard-spider", "README.md")
-        with open(clean, "w", encoding="utf-8") as fh:
-            fh.write("Future work follows issues #208, #209, #210, #211, #212, #213, and #214.\n")
-
-        orig_scen, orig_repo = CI.SCEN, CI._REPO
-        CI.SCEN, CI._REPO = scen, tmp
-        try:
-            failures: list[str] = []
-            CI.check_wizard_spider_pack_drift(failures)
-        finally:
-            CI.SCEN, CI._REPO = orig_scen, orig_repo
-
-        self.assertEqual(failures, [])
-
-
-class SharedOracleModelGateTest(unittest.TestCase):
-    def test_shared_oracle_model_gate_is_clean(self):
-        failures: list[str] = []
-        CI.check_shared_oracle_model(failures)
-        self.assertEqual(failures, [])
-
-    def test_missing_shared_oracle_model_is_flagged(self):
-        # The model ships inside the package; simulate a broken package build by
-        # pointing the package dir at a location that has no oracle_model.py.
-        tmp = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, tmp)
-
-        orig_pkg = CI._PKG
-        CI._PKG = tmp
-        try:
-            failures: list[str] = []
-            CI.check_shared_oracle_model(failures)
-        finally:
-            CI._PKG = orig_pkg
-
-        self.assertIn("shared oracle model MISSING", "\n".join(failures))
-
-    def test_shared_oracle_directory_is_not_a_pack(self):
-        tmp = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, tmp)
-        scen = os.path.join(tmp, "scenarios")
-        os.makedirs(os.path.join(scen, "_oracle"), exist_ok=True)
-        os.makedirs(os.path.join(scen, "real-pack"), exist_ok=True)
-
-        orig_scen = CI.SCEN
-        CI.SCEN = scen
-        try:
-            self.assertEqual(CI._packs(), ["real-pack"])
-        finally:
-            CI.SCEN = orig_scen
 
 
 class AntiExtensionGuardTest(unittest.TestCase):
@@ -387,52 +315,170 @@ class AntiExtensionAggregatorTest(unittest.TestCase):
 
 
 class PackDiscoveryTest(unittest.TestCase):
-    def _with_temp_git_repo(self):
+    def _with_temp_catalog(self):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         scen = os.path.join(tmp, "scenarios")
         os.makedirs(scen, exist_ok=True)
-        os.makedirs(os.path.join(tmp, ".git"), exist_ok=True)
         return tmp, scen
 
-    def test_ignored_cache_only_directory_is_not_a_pack(self):
-        tmp, scen = self._with_temp_git_repo()
-        os.makedirs(os.path.join(scen, "hospital", "sdl", "__pycache__"))
+    def test_every_direct_real_directory_is_a_pack_candidate(self):
+        _tmp, scen = self._with_temp_catalog()
+        os.makedirs(os.path.join(scen, "design-notes"))
+        os.makedirs(os.path.join(scen, "legacy-scenario", "sdl"))
         os.makedirs(os.path.join(scen, "real-pack"))
+        os.makedirs(os.path.join(scen, "alpha-pack"))
         with open(os.path.join(scen, "real-pack", "pack.yaml"), "w",
                   encoding="utf-8") as fh:
             fh.write("name: real-pack\n")
+        with open(os.path.join(scen, "alpha-pack", "pack.yaml"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("name: alpha-pack\n")
 
-        orig_repo, orig_scen, orig_git_lines = CI._REPO, CI.SCEN, CI._git_lines
-        CI._REPO, CI.SCEN = tmp, scen
-        CI._git_lines = lambda args: ["true"] if args == [
-            "rev-parse", "--is-inside-work-tree"] else []
-        try:
-            self.assertEqual(CI._packs(), ["real-pack"])
-        finally:
-            CI._REPO, CI.SCEN, CI._git_lines = orig_repo, orig_scen, orig_git_lines
+        with open(os.path.join(scen, "README.md"), "w", encoding="utf-8") as fh:
+            fh.write("not a pack directory\n")
 
-    def test_git_visible_directory_without_pack_yaml_is_still_a_pack_gap(self):
-        tmp, scen = self._with_temp_git_repo()
-        os.makedirs(os.path.join(scen, "new-pack", "sdl"))
+        self.assertEqual(
+            CI._packs(scen),
+            ("alpha-pack", "design-notes", "legacy-scenario", "real-pack"),
+        )
 
-        def fake_git_lines(args):
-            if args == ["rev-parse", "--is-inside-work-tree"]:
-                return ["true"]
-            if args[:3] == ["ls-files", "--", os.path.join("scenarios", "new-pack")]:
-                return []
-            if args[:4] == ["status", "--porcelain", "--untracked-files=all",
-                            "--"]:
-                return ["?? scenarios/new-pack/sdl/topology.yaml"]
-            return []
+    def test_symlinked_pack_directory_is_not_followed(self):
+        tmp, scen = self._with_temp_catalog()
+        outside = os.path.join(tmp, "outside-pack")
+        os.makedirs(outside)
+        with open(os.path.join(outside, "pack.yaml"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("name: outside-pack\n")
+        os.symlink(outside, os.path.join(scen, "linked-pack"))
 
-        orig_repo, orig_scen, orig_git_lines = CI._REPO, CI.SCEN, CI._git_lines
-        CI._REPO, CI.SCEN = tmp, scen
-        CI._git_lines = fake_git_lines
-        try:
-            self.assertEqual(CI._packs(), ["new-pack"])
-        finally:
-            CI._REPO, CI.SCEN, CI._git_lines = orig_repo, orig_scen, orig_git_lines
+        self.assertEqual(CI._packs(scen), ())
+
+    def test_absent_scenarios_directory_is_an_empty_catalog(self):
+        tmp, _scen = self._with_temp_catalog()
+        missing = os.path.join(tmp, "missing")
+
+        self.assertEqual(CI._packs(missing), ())
+
+    def test_missing_explicit_packs_root_fails_closed(self):
+        tmp, _scen = self._with_temp_catalog()
+        failures: list[str] = []
+
+        self.assertEqual(
+            CI._packs(
+                os.path.join(tmp, "missing"),
+                failures,
+                require_root=True,
+            ),
+            (),
+        )
+        self.assertEqual(
+            failures,
+            ["PACK-ROOT DISCOVERY FAILED: root could not be inspected"],
+        )
+
+    def test_unreadable_catalog_fails_closed_without_raw_exception(self):
+        tmp, _scen = self._with_temp_catalog()
+        packs_root = os.path.join(tmp, "not-a-directory")
+        with open(packs_root, "w", encoding="utf-8") as fh:
+            fh.write("not a pack root\n")
+        failures: list[str] = []
+
+        self.assertEqual(CI._packs(packs_root, failures), ())
+
+        self.assertEqual(len(failures), 1)
+        self.assertIn("PACK-ROOT DISCOVERY FAILED", failures[0])
+        self.assertNotIn(packs_root, failures[0])
+
+
+class AuthorCiDiscoveryFlowTest(unittest.TestCase):
+    def test_packs_root_discovers_once_and_executes_code_only_for_static_valid_packs(self):
+        valid = CI._AuthorStaticView((), (), (), (), ())
+        invalid = CI._AuthorStaticView(("invalid",), (), (), (), ())
+        events: list[tuple[str, tuple[str, ...]]] = []
+
+        def static_check(_failures, packs):
+            events.append(("static", packs))
+            return {"valid": valid, "invalid": invalid}
+
+        def record(name):
+            return lambda _failures, packs, *args: events.append((name, packs))
+
+        def record_with_views(name):
+            return lambda _failures, _views, packs: events.append((name, packs))
+
+        def discover_executables(packs, _failures):
+            events.append(("executables", packs))
+            return {pack: object() for pack in packs}
+
+        def record_execution(name):
+            return lambda eligible, _failures: events.append(
+                (name, tuple(eligible)))
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(CI, "_packs", return_value=("valid", "invalid")) as discover, \
+                mock.patch.object(CI, "check_static_contract", side_effect=static_check), \
+                mock.patch.object(
+                    CI, "discover_executables", side_effect=discover_executables
+                ), \
+                mock.patch.object(CI, "close_executables"), \
+                mock.patch.object(
+                    CI, "check_validators", side_effect=record_execution("validators")
+                ), \
+                mock.patch.object(
+                    CI, "check_tests", side_effect=record_execution("tests")
+                ), \
+                mock.patch.object(CI, "check_sdl", side_effect=record_with_views("sdl")), \
+                mock.patch.object(CI, "check_visibility", side_effect=record("visibility")), \
+                mock.patch.object(CI, "check_manifest", side_effect=record_with_views("manifest")), \
+                mock.patch.object(CI, "check_anti_extension", side_effect=record("anti-extension")), \
+                mock.patch.object(CI, "check_provenance", side_effect=record_with_views("provenance")), \
+                mock.patch.object(CI, "check_golden_checklist", side_effect=record("golden")):
+            self.assertEqual(CI.main(["--packs-root", tmp]), 0)
+
+        discover.assert_called_once()
+        self.assertEqual(events[0], ("static", ("valid", "invalid")))
+        self.assertEqual(events[1:4], [
+            ("executables", ("valid",)),
+            ("validators", ("valid",)),
+            ("tests", ("valid",)),
+        ])
+        self.assertTrue(all(packs == ("valid", "invalid")
+                            for _name, packs in events[4:]))
+
+    def test_explicit_pack_skips_bulk_discovery(self):
+        valid = CI._AuthorStaticView((), (), (), (), ())
+        with tempfile.TemporaryDirectory() as tmp:
+            pack_root = os.path.join(tmp, "one-pack")
+            os.makedirs(pack_root)
+            with mock.patch.object(CI, "_packs") as discover, \
+                    mock.patch.object(
+                        CI, "check_static_contract", return_value={"one-pack": valid}
+                    ) as static_check, \
+                    mock.patch.object(CI, "discover_executables", return_value={}), \
+                    mock.patch.object(CI, "close_executables"), \
+                    mock.patch.object(CI, "check_validators"), \
+                    mock.patch.object(CI, "check_tests"), \
+                    mock.patch.object(CI, "check_sdl"), \
+                    mock.patch.object(CI, "check_visibility"), \
+                    mock.patch.object(CI, "check_manifest"), \
+                    mock.patch.object(CI, "check_anti_extension"), \
+                    mock.patch.object(CI, "check_provenance"), \
+                    mock.patch.object(CI, "check_golden_checklist"):
+                self.assertEqual(CI.main(["--pack", pack_root]), 0)
+
+        discover.assert_not_called()
+        static_check.assert_called_once_with(mock.ANY, ("one-pack",))
+
+    def test_missing_explicit_packs_root_cannot_pass(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(
+                CI.main(["--packs-root", os.path.join(tmp, "missing")]),
+                1,
+            )
+
+        self.assertIn("PACK-ROOT DISCOVERY FAILED", output.getvalue())
 
 
 class NewScenarioPackScaffoldTest(unittest.TestCase):
@@ -453,6 +499,9 @@ class GoldenChecklistGateTest(unittest.TestCase):
         scen = os.path.join(tmp, "scenarios")
         docs = os.path.join(scen, "fakepack", "docs")
         os.makedirs(docs, exist_ok=True)
+        with open(os.path.join(scen, "fakepack", "pack.yaml"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("name: fakepack\n")
         if checklist_body is not None:
             with open(os.path.join(docs, "golden-readiness-checklist.md"),
                       "w", encoding="utf-8") as fh:
@@ -544,7 +593,7 @@ class CompatibilityManifestGateTest(unittest.TestCase):
 
     def _valid_manifest(self) -> str:
         return "\n".join([
-            "schema_version: 1",
+            "schema_version: scenario-pack-compatibility/v1",
             "pack:",
             "  name: example-pack",
             '  title: "Example Pack"',
@@ -580,7 +629,7 @@ class CompatibilityManifestGateTest(unittest.TestCase):
         CI.SCEN, CI._REPO = scen, tmp
         try:
             failures: list[str] = []
-            CI.check_manifest(failures)
+            CI.check_manifest(failures, packs=("example-pack",))
         finally:
             CI.SCEN, CI._REPO = orig_scen, orig_repo
 
@@ -593,7 +642,7 @@ class CompatibilityManifestGateTest(unittest.TestCase):
         CI.SCEN, CI._REPO = scen, tmp
         try:
             failures: list[str] = []
-            CI.check_manifest(failures)
+            CI.check_manifest(failures, packs=("example-pack",))
         finally:
             CI.SCEN, CI._REPO = orig_scen, orig_repo
 
@@ -617,7 +666,7 @@ class CompatibilityManifestGateTest(unittest.TestCase):
         CI.SCEN, CI._REPO = scen, tmp
         try:
             failures: list[str] = []
-            CI.check_manifest(failures)
+            CI.check_manifest(failures, packs=("example-pack",))
         finally:
             CI.SCEN, CI._REPO = orig_scen, orig_repo
 
@@ -630,7 +679,7 @@ class CompatibilityManifestGateTest(unittest.TestCase):
         CI.SCEN, CI._REPO = scen, tmp
         try:
             failures: list[str] = []
-            CI.check_manifest(failures)
+            CI.check_manifest(failures, packs=("example-pack",))
         finally:
             CI.SCEN, CI._REPO = orig_scen, orig_repo
 
@@ -661,7 +710,7 @@ class CompatibilityManifestGateTest(unittest.TestCase):
         CI.SCEN, CI._REPO = scen, tmp
         try:
             failures: list[str] = []
-            CI.check_manifest(failures)
+            CI.check_manifest(failures, packs=("example-pack",))
         finally:
             CI.SCEN, CI._REPO = orig_scen, orig_repo
 
@@ -761,10 +810,10 @@ class NewScenarioPackScriptTest(unittest.TestCase):
 def _valid_ledger(name: str = "testpack") -> dict:
     """A minimal ledger that satisfies the provenance schema + gate."""
     return {
-        "schema_version": 1,
+        "schema_version": "scenario-pack-provenance/v2",
         "pack": {"name": name},
         "sources": [
-            {"source_id": "original-design", "kind": "original",
+            {"source_id": "original-design",
              "name": "Original design", "license": "proprietary",
              "usage": "reused", "attribution_required": False},
         ],
@@ -842,7 +891,15 @@ class ProvenanceLedgerGateTest(unittest.TestCase):
 
     def test_schema_violation_is_flagged(self):
         bad = _valid_ledger()
-        bad["sources"][0]["kind"] = "not-a-kind"
+        bad["sources"][0]["usage"] = "not-a-usage"
+        blob = "\n".join(self._run(bad))
+        self.assertIn("INVALID", blob)
+
+    def test_reintroduced_source_kind_is_rejected(self):
+        # `sources[].kind` was removed (ADR 0014); the closed schema rejects it
+        # as an unknown field so a governed concept vocabulary cannot return.
+        bad = _valid_ledger()
+        bad["sources"][0]["kind"] = "framework"
         blob = "\n".join(self._run(bad))
         self.assertIn("INVALID", blob)
 
@@ -1162,6 +1219,338 @@ class SdlValidationGateTest(unittest.TestCase):
         finally:
             CI._load_aces_sdl = orig
         self.assertIn("SDL VALIDATION UNAVAILABLE", "\n".join(failures))
+
+
+class ExecutableDiscoveryContractTest(unittest.TestCase):
+    """The author-CI executable-discovery contract is closed and ordered.
+
+    The two supported-root tuples are the single policy seam (ADR 0013 / issue
+    #114): locking them to the exact contract proves discovery encodes no
+    catalog-specific path, and asserting the discovery helpers' output order
+    proves ordering is deterministic and follows the declared policy sequence.
+    """
+
+    def test_validator_dirs_are_the_closed_contract(self):
+        self.assertEqual(CI.VALIDATOR_DIRS, ("sdl", "validation", "profiles", "flags"))
+
+    def test_test_dirs_are_the_closed_contract(self):
+        self.assertEqual(
+            CI.TEST_DIRS,
+            ("sdl/tests", "validation/tests", "build/tests",
+             "profiles/tests", "ctfd/tests", "tests"))
+
+    def test_discover_validators_is_ordered_by_policy_then_name(self):
+        inventory = frozenset({
+            "flags/validate_a.py",
+            "profiles/validate_a.py",
+            "validation/validate_a.py",
+            "sdl/validate_b.py",
+            "sdl/validate_a.py",
+            "sdl/tests/validate_nested.py",   # nested → not a direct validator
+            "docs/validate_a.py",             # unsupported root
+            "sdl/helper.py",                  # not a validate_*.py
+        })
+        self.assertEqual(
+            CI._discover_validators(inventory),
+            ["sdl/validate_a.py", "sdl/validate_b.py",
+             "validation/validate_a.py", "profiles/validate_a.py",
+             "flags/validate_a.py"])
+
+    def test_discover_test_roots_is_ordered_by_policy(self):
+        inventory = frozenset({
+            "tests/test_a.py",
+            "ctfd/tests/test_a.py",
+            "sdl/tests/test_a.py",
+            "random/tests/test_a.py",   # unsupported root
+        })
+        self.assertEqual(
+            CI._discover_test_roots(inventory),
+            ["sdl/tests", "ctfd/tests", "tests"])
+
+
+class _ExecPackHarness(unittest.TestCase):
+    """Shared temp-pack scaffolding for the discovery/execution gate tests."""
+
+    def _pack(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        scen = os.path.join(tmp, "scenarios")
+        pack = os.path.join(scen, "example-pack")
+        os.makedirs(pack)
+        with open(os.path.join(pack, "pack.yaml"), "w", encoding="utf-8") as fh:
+            fh.write("name: example-pack\n")
+        return tmp, scen, pack
+
+    def _run(self, check, tmp, scen):
+        """Mirror main(): one shared eligibility pass, run one phase, close fds."""
+        orig_scen, orig_repo = CI.SCEN, CI._REPO
+        CI.SCEN, CI._REPO = scen, tmp
+        try:
+            failures: list[str] = []
+            with redirect_stdout(io.StringIO()):
+                eligible = CI.discover_executables(("example-pack",), failures)
+                try:
+                    check(eligible, failures)
+                finally:
+                    CI.close_executables(eligible)
+            return failures
+        finally:
+            CI.SCEN, CI._REPO = orig_scen, orig_repo
+
+
+class ValidatorDiscoveryExecutionTest(_ExecPackHarness):
+    """check_validators runs every supported root, refuses the rest, fails
+    closed on symlink escapes, and bounds output (issue #114, ADR 0013)."""
+
+    def _validator(self, pack, sub, name, rc):
+        d = os.path.join(pack, sub)
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, name), "w", encoding="utf-8") as fh:
+            fh.write(f"import sys\nif __name__ == '__main__':\n    sys.exit({rc})\n")
+
+    def test_every_supported_validator_root_executes(self):
+        tmp, scen, pack = self._pack()
+        for sub in ("sdl", "validation", "profiles", "flags"):
+            self._validator(pack, sub, "validate_bad.py", 1)
+        blob = "\n".join(self._run(CI.check_validators, tmp, scen))
+        for sub in ("sdl", "validation", "profiles", "flags"):
+            self.assertIn(f"example-pack/{sub}/validate_bad.py", blob,
+                          f"{sub} validator did not execute")
+
+    def test_passing_validators_across_all_roots_are_clean(self):
+        tmp, scen, pack = self._pack()
+        for sub in ("sdl", "validation", "profiles", "flags"):
+            self._validator(pack, sub, "validate_ok.py", 0)
+        self.assertEqual(self._run(CI.check_validators, tmp, scen), [])
+
+    def test_unsupported_validator_root_does_not_execute(self):
+        tmp, scen, pack = self._pack()
+        # `build` is a TEST root (not a validator root); `random` is neither.
+        self._validator(pack, "build", "validate_bad.py", 1)
+        self._validator(pack, "random", "validate_bad.py", 1)
+        self.assertEqual(self._run(CI.check_validators, tmp, scen), [])
+
+    def test_nested_validator_is_not_discovered(self):
+        tmp, scen, pack = self._pack()
+        # A validator one level below a supported root is not a direct member.
+        self._validator(pack, os.path.join("sdl", "nested"), "validate_bad.py", 1)
+        self.assertEqual(self._run(CI.check_validators, tmp, scen), [])
+
+    def test_symlinked_validator_escaping_pack_is_rejected(self):
+        tmp, scen, pack = self._pack()
+        # Target exits 0, so executing it would produce NO failure; a non-empty
+        # failure list therefore proves the guard refused it rather than ran it.
+        outside = os.path.join(tmp, "outside_validate.py")
+        with open(outside, "w", encoding="utf-8") as fh:
+            fh.write("import sys\nif __name__ == '__main__':\n    sys.exit(0)\n")
+        os.makedirs(os.path.join(pack, "sdl"))
+        os.symlink(outside, os.path.join(pack, "sdl", "validate_escape.py"))
+        failures = self._run(CI.check_validators, tmp, scen)
+        self.assertTrue(failures, "symlinked validator was not rejected")
+        self.assertTrue(any("example-pack" in f and "UNSAFE" in f for f in failures),
+                        "\n".join(failures))
+
+    def test_failing_validator_output_is_bounded(self):
+        tmp, scen, pack = self._pack()
+        d = os.path.join(pack, "sdl")
+        os.makedirs(d)
+        with open(os.path.join(d, "validate_bad.py"), "w", encoding="utf-8") as fh:
+            fh.write("import sys\n"
+                     "sys.stdout.write('X' * 2_000_000)\n"
+                     "sys.exit(1)\n")
+        failures = self._run(CI.check_validators, tmp, scen)
+        [line] = [f for f in failures if "validate_bad.py" in f]
+        self.assertLess(len(line), 5000, "failure envelope was not bounded")
+
+
+class TestSuiteDiscoveryExecutionTest(_ExecPackHarness):
+    """check_tests runs every supported test root, refuses the rest, and fails
+    closed when the pack contains a symlink (issue #114, ADR 0013)."""
+
+    SUPPORTED = ("sdl/tests", "validation/tests", "build/tests",
+                 "profiles/tests", "ctfd/tests", "tests")
+
+    def _suite(self, pack, sub, passing):
+        d = os.path.join(pack, sub)
+        os.makedirs(d, exist_ok=True)
+        assertion = "True" if passing else "False"
+        with open(os.path.join(d, "test_gen.py"), "w", encoding="utf-8") as fh:
+            fh.write("import unittest\n\n\nclass T(unittest.TestCase):\n"
+                     f"    def test_x(self):\n        self.assertTrue({assertion})\n")
+
+    def test_every_supported_test_root_executes(self):
+        tmp, scen, pack = self._pack()
+        for sub in self.SUPPORTED:
+            self._suite(pack, sub, passing=False)
+        blob = "\n".join(self._run(CI.check_tests, tmp, scen))
+        for sub in self.SUPPORTED:
+            self.assertIn(f"example-pack/{sub}", blob, f"{sub} did not execute")
+
+    def test_passing_suites_across_all_roots_are_clean(self):
+        tmp, scen, pack = self._pack()
+        for sub in self.SUPPORTED:
+            self._suite(pack, sub, passing=True)
+        self.assertEqual(self._run(CI.check_tests, tmp, scen), [])
+
+    def test_unsupported_test_root_does_not_execute(self):
+        tmp, scen, pack = self._pack()
+        self._suite(pack, os.path.join("random", "tests"), passing=False)
+        self._suite(pack, "extra_tests", passing=False)
+        self.assertEqual(self._run(CI.check_tests, tmp, scen), [])
+
+    def test_symlink_in_pack_blocks_test_execution(self):
+        tmp, scen, pack = self._pack()
+        self._suite(pack, "tests", passing=False)  # would FAIL if executed
+        outside = os.path.join(tmp, "outside.txt")
+        with open(outside, "w", encoding="utf-8") as fh:
+            fh.write("x\n")
+        os.symlink(outside, os.path.join(pack, "link.txt"))
+        failures = self._run(CI.check_tests, tmp, scen)
+        blob = "\n".join(failures)
+        self.assertNotIn("tests FAILED", blob)   # the failing suite never ran
+        self.assertTrue(any("example-pack" in f and "UNSAFE" in f for f in failures),
+                        blob)
+
+
+class SharedEligibilityAndBudgetTest(_ExecPackHarness):
+    """Both execution phases consume one safe-inventory eligibility pass, and the
+    shared runner kills descendants that inherit a pipe (issue #114, ADR 0013)."""
+
+    def test_unsafe_pack_is_refused_once_across_both_phases(self):
+        # A symlinked member fails the inventory. The refusal is recorded once by
+        # the shared eligibility pass — not once per executor — and neither the
+        # validator nor the test phase runs for the pack.
+        tmp, scen, pack = self._pack()
+        self._validator_and_suite(pack)
+        outside = os.path.join(tmp, "outside.txt")
+        with open(outside, "w", encoding="utf-8") as fh:
+            fh.write("x\n")
+        os.symlink(outside, os.path.join(pack, "link.txt"))
+
+        orig_scen, orig_repo = CI.SCEN, CI._REPO
+        CI.SCEN, CI._REPO = scen, tmp
+        try:
+            failures: list[str] = []
+            with redirect_stdout(io.StringIO()):
+                eligible = CI.discover_executables(("example-pack",), failures)
+                try:
+                    self.assertEqual(eligible, {})
+                    CI.check_validators(eligible, failures)
+                    CI.check_tests(eligible, failures)
+                finally:
+                    CI.close_executables(eligible)
+        finally:
+            CI.SCEN, CI._REPO = orig_scen, orig_repo
+
+        unsafe = [f for f in failures if "UNSAFE" in f and "example-pack" in f]
+        self.assertEqual(len(unsafe), 1, "\n".join(failures))
+        self.assertNotIn("FAILED", "\n".join(failures))
+
+    def _validator_and_suite(self, pack):
+        d = os.path.join(pack, "sdl")
+        os.makedirs(os.path.join(d, "tests"), exist_ok=True)
+        with open(os.path.join(d, "validate_bad.py"), "w", encoding="utf-8") as fh:
+            fh.write("import sys\nif __name__ == '__main__':\n    sys.exit(1)\n")
+        with open(os.path.join(d, "tests", "test_gen.py"), "w", encoding="utf-8") as fh:
+            fh.write("import unittest\n\n\nclass T(unittest.TestCase):\n"
+                     "    def test_x(self):\n        self.assertTrue(False)\n")
+
+    def test_descendant_holding_pipe_is_killed_and_join_is_bounded(self):
+        # A validator that spawns a detached grandchild inheriting its stdout,
+        # then exits 0 immediately. Killing only the direct child would leave the
+        # grandchild holding the pipe open, blocking the drainer join past the
+        # deadline; the process-group kill must reap it so the marker it would
+        # write after a delay never appears.
+        tmp, scen, pack = self._pack()
+        marker = os.path.join(tmp, "grandchild-ran.marker")
+        d = os.path.join(pack, "sdl")
+        os.makedirs(d)
+        script = (
+            "import subprocess, sys\n"
+            "subprocess.Popen([sys.executable, '-c',\n"
+            "    'import time,sys; time.sleep(3); open(sys.argv[1],\"w\").close()',\n"
+            f"    {marker!r}])\n"
+            "sys.exit(0)\n"
+        )
+        with open(os.path.join(d, "validate_spawn.py"), "w", encoding="utf-8") as fh:
+            fh.write(script)
+
+        original_grace = CI._EXEC_JOIN_GRACE_SECONDS
+        CI._EXEC_JOIN_GRACE_SECONDS = 1
+        try:
+            failures = self._run(CI.check_validators, tmp, scen)
+        finally:
+            CI._EXEC_JOIN_GRACE_SECONDS = original_grace
+
+        self.assertEqual(failures, [])  # the validator itself exited 0
+        time.sleep(4)  # past the grandchild's would-be write, had it survived
+        self.assertFalse(
+            os.path.exists(marker),
+            "grandchild survived — the process group was not killed")
+
+    def test_validator_replacement_blocks_the_later_test_phase(self):
+        """A validator cannot swap a previously authorized test into execution."""
+        tmp, scen, pack = self._pack()
+        marker = os.path.join(tmp, "test-ran.marker")
+        test_dir = os.path.join(pack, "tests")
+        os.makedirs(test_dir)
+        test_path = os.path.join(test_dir, "test_gen.py")
+        with open(test_path, "w", encoding="utf-8") as fh:
+            fh.write(
+                "import pathlib, unittest\n"
+                f"pathlib.Path({marker!r}).write_text('ran')\n\n"
+                "class T(unittest.TestCase):\n"
+                "    def test_x(self):\n"
+                "        self.assertTrue(True)\n"
+            )
+        validator_dir = os.path.join(pack, "sdl")
+        os.makedirs(validator_dir)
+        with open(
+            os.path.join(validator_dir, "validate_replace.py"),
+            "w",
+            encoding="utf-8",
+        ) as fh:
+            fh.write(
+                "import os, pathlib\n"
+                f"target = {test_path!r}\n"
+                "replacement = target + '.replacement'\n"
+                "pathlib.Path(replacement).write_text('replaced\\n')\n"
+                "os.replace(replacement, target)\n"
+            )
+
+        orig_scen, orig_repo = CI.SCEN, CI._REPO
+        CI.SCEN, CI._REPO = scen, tmp
+        try:
+            failures: list[str] = []
+            with redirect_stdout(io.StringIO()):
+                eligible = CI.discover_executables(("example-pack",), failures)
+                try:
+                    CI.check_validators(eligible, failures)
+                    CI.check_tests(eligible, failures)
+                finally:
+                    CI.close_executables(eligible)
+        finally:
+            CI.SCEN, CI._REPO = orig_scen, orig_repo
+
+        self.assertIn("filesystem identity changed", "\n".join(failures))
+        self.assertFalse(os.path.exists(marker), "mutated test suite executed")
+
+
+class ChallengeCategoryPartitionTest(unittest.TestCase):
+    """The shared `challenges.category.forbidden` code renders in author CI."""
+
+    def test_challenge_code_is_partitioned_as_challenge_failure(self):
+        g: list[str] = []
+        m: list[str] = []
+        p: list[str] = []
+        s: list[str] = []
+        CI._partition_author_static_error(
+            "testpack",
+            "challenges.category.forbidden: "
+            "challenges/challenges.yaml:challenges[0].category",
+            g, m, p, s)
+        self.assertEqual((m, p, s), ([], [], []))
+        self.assertTrue(any("CHALLENGE INVALID" in line for line in g), g)
 
 
 if __name__ == "__main__":

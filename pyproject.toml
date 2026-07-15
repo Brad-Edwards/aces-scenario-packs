@@ -25,7 +25,7 @@ classifiers = [
 # gate is fail-closed, so ACES cannot be optional. The exact pin is deliberate
 # while ACES SDL contracts are `stability: draft`; advancing it requires
 # compatibility tests against this package's validator and template.
-dependencies = ["PyYAML>=6", "aces-sdl==0.20.0"]
+dependencies = ["PyYAML>=6", "aces-sdl==0.21.0"]
 
 [project.urls]
 Homepage = "https://github.com/Brad-Edwards/aces-scenario-packs"

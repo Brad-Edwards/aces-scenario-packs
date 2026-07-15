@@ -2,7 +2,7 @@
 # catalog/package consumers; it does not provision, score, observe, or run the
 # scenario. See ../pack-compatibility.schema.yaml.
 
-schema_version: 1
+schema_version: "scenario-pack-compatibility/v1"
 pack:
   name: <name>
   title: "Human-readable title"
@@ -22,6 +22,8 @@ artifact_boundaries:
     - path: docs/golden-readiness-checklist.md
       export: operator
       description: Operator final-review checklist.
+  # Legacy compatibility label for restricted non-participant material only;
+  # validity and participant behavior remain ACES SDL semantics.
   oracle_only: []
   commercial: []
 

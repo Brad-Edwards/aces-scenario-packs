@@ -103,8 +103,8 @@ See [ADR 0013](decisions/adrs/0013-separate-consumer-static-validation-from-auth
 ## Status Meanings
 
 - `draft`: design/source only; the full live scenario is not stood up.
-- `built`: it stands up somewhere, but the full path has not been proven end to
-  end from the participant surface.
+- `built`: it stands up somewhere, but the declared ACES participant behavior
+  has not been proven end to end from the participant surface.
 - `golden`: the declared live reference build exists, enters participant start
   state, and has participant-equivalent full-path proof.
 
@@ -117,11 +117,13 @@ participant experience.
 The reference triangle is one coherent proof surface:
 
 - `build/` stands up the golden range.
-- `tests/` runs every required path against that live range.
+- `tests/` exercises every required ACES participant behavior and objective
+  against that live range.
 - `docs/walkthroughs/` is the human-readable, command-by-command version of the
-  same path.
+  same behavior.
 
-The three must agree path-for-path. A mismatch between them is a defect.
+The three must agree on the declared ACES behavior, objectives, and observable
+outcomes. A mismatch between them is a defect.
 
 ## Compatibility Manifest
 
@@ -195,6 +197,20 @@ explicit upstream pin lands once ACES marks it stable. The bundled
 [layout contract](../src/aces_scenario_packs/resources/contract/pack-layout.md)
 carries the full field-by-field mapping.
 
+**ACES concept-authority governs concept vocabulary.** ATT&CK and ATLAS
+offensive-behaviour tactics, UCO concept families, and the controlled
+vocabularies are published by ACES under `contracts/concept-authority/` and are
+authored and validated in ACES SDL behaviour specifications, not restated in the
+pack format. The provenance ledger therefore carries no `sources[].kind`, and the
+canonical challenge contract carries no `challenges[].category`; both were
+free-text overlaps of governed concepts, and a challenge's presentation grouping
+is an adapter-local CTFd concern. The remaining pack vocabulary (distribution
+class, source licensing/usage, review gates, challenge display text, delivery
+audiences, visibility) is genuinely pack-domain. This advanced the provenance
+schema to `scenario-pack-provenance/v2` and the scenario-pack contract to
+version 3. See
+[ADR 0014](decisions/adrs/0014-consume-aces-concept-authority.md).
+
 ## Pack Content Identity
 
 A consumer that ingests a pack by reference (path/key + version + digest) needs
@@ -253,21 +269,30 @@ immutably stage a pack, validate and digest that exact staging area, atomically
 promote the same bytes, and reverify before use when the storage boundary does
 not make that redundant.
 
-## Validation Oracles
+## Validity and ACES participant behavior
 
-When a pack ships an oracle layer, keep the hidden contract in
-operator/oracle-only pack-local files and map them through the manifest's
-`oracle_only` artifact boundary. The shared oracle model bundled in the package defines
-the common authoring shape for canonical steps, accepted alternates, evidence,
-prerequisites, failure states, consumer adapters, and operator or benchmark
-exports.
+The hydrated ACES SDL is the scenario specification. Declare attacker behavior
+with ACES participant semantics: bind the attacker through `agents` and
+`behavior_specifications`, declare governed actions through `action_contracts`,
+and use ACES preconditions, effects, failure classes, observation boundaries,
+outcome interpretation rules, objectives, evidence requirements, and workflows
+as the scenario requires. `aces-pack-validate` parses that SDL through the
+exactly pinned `aces-sdl` package; this package does not define a second behavior
+shape or decide that an ACES behavior specification is complete.
 
-Validators should be repeatable observers over committed source and digest-safe
-evidence references. CTFd, native scoring, operator debriefs, and
-agent-benchmark reports consume validator verdicts; they do not replace the
-oracle. Participant-facing files must not expose hidden path order, `S-*`
-success states, proof predicates, raw evidence, answers, credentials, flags, or
-next-step hints.
+The reference build, automated rehearsal, and participant walkthrough then
+demonstrate that the live environment realizes the declared ACES behavior and
+objectives. Explanatory `docs/attack-path.md` prose may describe the intended
+route through the environment, but it is not system state or a machine-readable
+contract. CTFd, operator debriefs, and agent-benchmark reports are consumers of
+the same ACES-backed scenario and live evidence; none is a competing
+specification.
+
+The compatibility manifest retains `oracle_only` and the `oracle` export value
+as release-boundary compatibility vocabulary. They classify restricted
+non-participant material only and confer no scenario semantics. Participant
+files must not expose restricted action ordering, raw evidence, answers,
+credentials, flags, or next-step hints.
 
 ## Operating Profiles
 
@@ -275,7 +300,7 @@ ACES uses **delivery/audience bundles** for operating profiles:
 `guided`, `unguided`, `purple-team`, `agent-benchmark`, and `demo`. These are
 content overlays under `profiles/`; they are not runtime/provider profiles.
 Selecting a bundle changes which participant, facilitator, defender, benchmark,
-or presenter files are exposed. It does not change the base hidden plan,
+or presenter files are exposed. It does not change the hydrated ACES SDL,
 topology, planted content, flags, reference tests, or golden proof.
 
 The standard bundle responsibilities are:
@@ -287,7 +312,7 @@ The standard bundle responsibilities are:
 - `purple-team`: defender injects, detection goals, expected alerts, blue-team
   tasks, and debrief prompts.
 - `agent-benchmark`: deterministic task envelope, participant-safe objective
-  contract, no-facilitator run metadata, and an operator-only oracle join.
+  contract, no-facilitator run metadata, and operator-only execution evidence.
 - `demo`: shortened path, scripted reset reference, reduced-resource runtime
   compatibility, high-signal proof moments, and presenter script.
 

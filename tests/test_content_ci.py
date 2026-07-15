@@ -16,10 +16,12 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import io
 import os
 import shutil
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from unittest import mock
 
 import yaml
@@ -103,6 +105,9 @@ class VisibilityScanRedactionTest(unittest.TestCase):
         scen = os.path.join(tmp, "scenarios")
         content = os.path.join(scen, "fakepack", "assets", "content")
         os.makedirs(content)
+        with open(os.path.join(scen, "fakepack", "pack.yaml"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("name: fakepack\n")
         with open(os.path.join(content, "leak.md"), "w", encoding="utf-8") as fh:
             fh.write(f"oops the answer is {TECH_TOKEN}\n")
 
@@ -128,6 +133,9 @@ class VisibilityScanRedactionTest(unittest.TestCase):
         scen = os.path.join(tmp, "scenarios")
         challenges = os.path.join(scen, "fakepack", "challenges")
         os.makedirs(challenges)
+        with open(os.path.join(scen, "fakepack", "pack.yaml"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("name: fakepack\n")
         with open(os.path.join(challenges, "challenge.md"), "w",
                   encoding="utf-8") as fh:
             fh.write(f"challenge copy leaked {TECH_TOKEN}\n")
@@ -145,50 +153,6 @@ class VisibilityScanRedactionTest(unittest.TestCase):
         self.assertIn("challenges/challenge.md", blob)
         self.assertNotIn(TECH_TOKEN, blob)
         self.assertIn(":1", blob)
-
-
-class WizardSpiderPackDriftTest(unittest.TestCase):
-    def _with_temp_repo(self):
-        tmp = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, tmp)
-        scen = os.path.join(tmp, "scenarios")
-        os.makedirs(os.path.join(scen, "wizard-spider"), exist_ok=True)
-        os.makedirs(os.path.join(scen, "design-notes"), exist_ok=True)
-        return tmp, scen
-
-    def test_stale_closed_milestone_reference_is_flagged(self):
-        tmp, scen = self._with_temp_repo()
-        stale = os.path.join(scen, "wizard-spider", "README.md")
-        with open(stale, "w", encoding="utf-8") as fh:
-            fh.write("Future scoring work remains issue #36.\n")
-
-        orig_scen, orig_repo = CI.SCEN, CI._REPO
-        CI.SCEN, CI._REPO = scen, tmp
-        try:
-            failures: list[str] = []
-            CI.check_wizard_spider_pack_drift(failures)
-        finally:
-            CI.SCEN, CI._REPO = orig_scen, orig_repo
-
-        blob = "\n".join(failures)
-        self.assertIn("WIZARD-SPIDER PACK DRIFT", blob)
-        self.assertIn("README.md", blob)
-
-    def test_corrected_sequence_is_clean(self):
-        tmp, scen = self._with_temp_repo()
-        clean = os.path.join(scen, "wizard-spider", "README.md")
-        with open(clean, "w", encoding="utf-8") as fh:
-            fh.write("Future work follows issues #208, #209, #210, #211, #212, #213, and #214.\n")
-
-        orig_scen, orig_repo = CI.SCEN, CI._REPO
-        CI.SCEN, CI._REPO = scen, tmp
-        try:
-            failures: list[str] = []
-            CI.check_wizard_spider_pack_drift(failures)
-        finally:
-            CI.SCEN, CI._REPO = orig_scen, orig_repo
-
-        self.assertEqual(failures, [])
 
 
 class AntiExtensionGuardTest(unittest.TestCase):
@@ -350,52 +314,151 @@ class AntiExtensionAggregatorTest(unittest.TestCase):
 
 
 class PackDiscoveryTest(unittest.TestCase):
-    def _with_temp_git_repo(self):
+    def _with_temp_catalog(self):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         scen = os.path.join(tmp, "scenarios")
         os.makedirs(scen, exist_ok=True)
-        os.makedirs(os.path.join(tmp, ".git"), exist_ok=True)
         return tmp, scen
 
-    def test_ignored_cache_only_directory_is_not_a_pack(self):
-        tmp, scen = self._with_temp_git_repo()
-        os.makedirs(os.path.join(scen, "hospital", "sdl", "__pycache__"))
+    def test_every_direct_real_directory_is_a_pack_candidate(self):
+        _tmp, scen = self._with_temp_catalog()
+        os.makedirs(os.path.join(scen, "design-notes"))
+        os.makedirs(os.path.join(scen, "legacy-scenario", "sdl"))
         os.makedirs(os.path.join(scen, "real-pack"))
+        os.makedirs(os.path.join(scen, "alpha-pack"))
         with open(os.path.join(scen, "real-pack", "pack.yaml"), "w",
                   encoding="utf-8") as fh:
             fh.write("name: real-pack\n")
+        with open(os.path.join(scen, "alpha-pack", "pack.yaml"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("name: alpha-pack\n")
 
-        orig_repo, orig_scen, orig_git_lines = CI._REPO, CI.SCEN, CI._git_lines
-        CI._REPO, CI.SCEN = tmp, scen
-        CI._git_lines = lambda args: ["true"] if args == [
-            "rev-parse", "--is-inside-work-tree"] else []
-        try:
-            self.assertEqual(CI._packs(), ["real-pack"])
-        finally:
-            CI._REPO, CI.SCEN, CI._git_lines = orig_repo, orig_scen, orig_git_lines
+        with open(os.path.join(scen, "README.md"), "w", encoding="utf-8") as fh:
+            fh.write("not a pack directory\n")
 
-    def test_git_visible_directory_without_pack_yaml_is_still_a_pack_gap(self):
-        tmp, scen = self._with_temp_git_repo()
-        os.makedirs(os.path.join(scen, "new-pack", "sdl"))
+        self.assertEqual(
+            CI._packs(scen),
+            ("alpha-pack", "design-notes", "legacy-scenario", "real-pack"),
+        )
 
-        def fake_git_lines(args):
-            if args == ["rev-parse", "--is-inside-work-tree"]:
-                return ["true"]
-            if args[:3] == ["ls-files", "--", os.path.join("scenarios", "new-pack")]:
-                return []
-            if args[:4] == ["status", "--porcelain", "--untracked-files=all",
-                            "--"]:
-                return ["?? scenarios/new-pack/sdl/topology.yaml"]
-            return []
+    def test_symlinked_pack_directory_is_not_followed(self):
+        tmp, scen = self._with_temp_catalog()
+        outside = os.path.join(tmp, "outside-pack")
+        os.makedirs(outside)
+        with open(os.path.join(outside, "pack.yaml"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("name: outside-pack\n")
+        os.symlink(outside, os.path.join(scen, "linked-pack"))
 
-        orig_repo, orig_scen, orig_git_lines = CI._REPO, CI.SCEN, CI._git_lines
-        CI._REPO, CI.SCEN = tmp, scen
-        CI._git_lines = fake_git_lines
-        try:
-            self.assertEqual(CI._packs(), ["new-pack"])
-        finally:
-            CI._REPO, CI.SCEN, CI._git_lines = orig_repo, orig_scen, orig_git_lines
+        self.assertEqual(CI._packs(scen), ())
+
+    def test_absent_scenarios_directory_is_an_empty_catalog(self):
+        tmp, _scen = self._with_temp_catalog()
+        missing = os.path.join(tmp, "missing")
+
+        self.assertEqual(CI._packs(missing), ())
+
+    def test_missing_explicit_packs_root_fails_closed(self):
+        tmp, _scen = self._with_temp_catalog()
+        failures: list[str] = []
+
+        self.assertEqual(
+            CI._packs(
+                os.path.join(tmp, "missing"),
+                failures,
+                require_root=True,
+            ),
+            (),
+        )
+        self.assertEqual(
+            failures,
+            ["PACK-ROOT DISCOVERY FAILED: root could not be inspected"],
+        )
+
+    def test_unreadable_catalog_fails_closed_without_raw_exception(self):
+        tmp, _scen = self._with_temp_catalog()
+        packs_root = os.path.join(tmp, "not-a-directory")
+        with open(packs_root, "w", encoding="utf-8") as fh:
+            fh.write("not a pack root\n")
+        failures: list[str] = []
+
+        self.assertEqual(CI._packs(packs_root, failures), ())
+
+        self.assertEqual(len(failures), 1)
+        self.assertIn("PACK-ROOT DISCOVERY FAILED", failures[0])
+        self.assertNotIn(packs_root, failures[0])
+
+
+class AuthorCiDiscoveryFlowTest(unittest.TestCase):
+    def test_packs_root_discovers_once_and_executes_code_only_for_static_valid_packs(self):
+        valid = CI._AuthorStaticView((), (), (), (), ())
+        invalid = CI._AuthorStaticView(("invalid",), (), (), (), ())
+        events: list[tuple[str, tuple[str, ...]]] = []
+
+        def static_check(_failures, packs):
+            events.append(("static", packs))
+            return {"valid": valid, "invalid": invalid}
+
+        def record(name):
+            return lambda _failures, packs, *args: events.append((name, packs))
+
+        def record_with_views(name):
+            return lambda _failures, _views, packs: events.append((name, packs))
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(CI, "_packs", return_value=("valid", "invalid")) as discover, \
+                mock.patch.object(CI, "check_static_contract", side_effect=static_check), \
+                mock.patch.object(CI, "check_validators", side_effect=record("validators")), \
+                mock.patch.object(CI, "check_tests", side_effect=record("tests")), \
+                mock.patch.object(CI, "check_sdl", side_effect=record_with_views("sdl")), \
+                mock.patch.object(CI, "check_visibility", side_effect=record("visibility")), \
+                mock.patch.object(CI, "check_manifest", side_effect=record_with_views("manifest")), \
+                mock.patch.object(CI, "check_anti_extension", side_effect=record("anti-extension")), \
+                mock.patch.object(CI, "check_provenance", side_effect=record_with_views("provenance")), \
+                mock.patch.object(CI, "check_golden_checklist", side_effect=record("golden")):
+            self.assertEqual(CI.main(["--packs-root", tmp]), 0)
+
+        discover.assert_called_once()
+        self.assertEqual(events[0], ("static", ("valid", "invalid")))
+        self.assertEqual(events[1:3], [
+            ("validators", ("valid",)),
+            ("tests", ("valid",)),
+        ])
+        self.assertTrue(all(packs == ("valid", "invalid")
+                            for _name, packs in events[3:]))
+
+    def test_explicit_pack_skips_bulk_discovery(self):
+        valid = CI._AuthorStaticView((), (), (), (), ())
+        with tempfile.TemporaryDirectory() as tmp:
+            pack_root = os.path.join(tmp, "one-pack")
+            os.makedirs(pack_root)
+            with mock.patch.object(CI, "_packs") as discover, \
+                    mock.patch.object(
+                        CI, "check_static_contract", return_value={"one-pack": valid}
+                    ) as static_check, \
+                    mock.patch.object(CI, "check_validators"), \
+                    mock.patch.object(CI, "check_tests"), \
+                    mock.patch.object(CI, "check_sdl"), \
+                    mock.patch.object(CI, "check_visibility"), \
+                    mock.patch.object(CI, "check_manifest"), \
+                    mock.patch.object(CI, "check_anti_extension"), \
+                    mock.patch.object(CI, "check_provenance"), \
+                    mock.patch.object(CI, "check_golden_checklist"):
+                self.assertEqual(CI.main(["--pack", pack_root]), 0)
+
+        discover.assert_not_called()
+        static_check.assert_called_once_with(mock.ANY, ("one-pack",))
+
+    def test_missing_explicit_packs_root_cannot_pass(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(
+                CI.main(["--packs-root", os.path.join(tmp, "missing")]),
+                1,
+            )
+
+        self.assertIn("PACK-ROOT DISCOVERY FAILED", output.getvalue())
 
 
 class NewScenarioPackScaffoldTest(unittest.TestCase):
@@ -416,6 +479,9 @@ class GoldenChecklistGateTest(unittest.TestCase):
         scen = os.path.join(tmp, "scenarios")
         docs = os.path.join(scen, "fakepack", "docs")
         os.makedirs(docs, exist_ok=True)
+        with open(os.path.join(scen, "fakepack", "pack.yaml"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("name: fakepack\n")
         if checklist_body is not None:
             with open(os.path.join(docs, "golden-readiness-checklist.md"),
                       "w", encoding="utf-8") as fh:
@@ -543,7 +609,7 @@ class CompatibilityManifestGateTest(unittest.TestCase):
         CI.SCEN, CI._REPO = scen, tmp
         try:
             failures: list[str] = []
-            CI.check_manifest(failures)
+            CI.check_manifest(failures, packs=("example-pack",))
         finally:
             CI.SCEN, CI._REPO = orig_scen, orig_repo
 
@@ -556,7 +622,7 @@ class CompatibilityManifestGateTest(unittest.TestCase):
         CI.SCEN, CI._REPO = scen, tmp
         try:
             failures: list[str] = []
-            CI.check_manifest(failures)
+            CI.check_manifest(failures, packs=("example-pack",))
         finally:
             CI.SCEN, CI._REPO = orig_scen, orig_repo
 
@@ -580,7 +646,7 @@ class CompatibilityManifestGateTest(unittest.TestCase):
         CI.SCEN, CI._REPO = scen, tmp
         try:
             failures: list[str] = []
-            CI.check_manifest(failures)
+            CI.check_manifest(failures, packs=("example-pack",))
         finally:
             CI.SCEN, CI._REPO = orig_scen, orig_repo
 
@@ -593,7 +659,7 @@ class CompatibilityManifestGateTest(unittest.TestCase):
         CI.SCEN, CI._REPO = scen, tmp
         try:
             failures: list[str] = []
-            CI.check_manifest(failures)
+            CI.check_manifest(failures, packs=("example-pack",))
         finally:
             CI.SCEN, CI._REPO = orig_scen, orig_repo
 
@@ -624,7 +690,7 @@ class CompatibilityManifestGateTest(unittest.TestCase):
         CI.SCEN, CI._REPO = scen, tmp
         try:
             failures: list[str] = []
-            CI.check_manifest(failures)
+            CI.check_manifest(failures, packs=("example-pack",))
         finally:
             CI.SCEN, CI._REPO = orig_scen, orig_repo
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repo-wide pack build / lint / release / profile-smoke gate (issue #49).
+"""Pack build / lint / release / profile-smoke gate (issue #49).
 
 Packages a ACES scenario pack and verifies every *supported* delivery
 profile before release. This is a **static, read-only** quality and export gate
@@ -37,7 +37,8 @@ What it enforces / produces:
 
 Stdlib + PyYAML only. Run locally exactly as CI does:
 
-    python3 scripts/ci/pack_release.py check --all
+    aces-pack-release check --pack ./path/to/pack
+    aces-pack-release check --packs-root ./path/to/packs
 """
 
 from __future__ import annotations
@@ -658,13 +659,28 @@ def smoke_pack(pack_root: str) -> list[str]:
 # --------------------------------------------------------------------------
 # check (CI entry point)
 # --------------------------------------------------------------------------
-def check(packs: list[str] | None = None) -> list[str]:
+def check(
+    packs: list[str] | None = None,
+    *,
+    packs_root: str | None = None,
+) -> list[str]:
     """Lint + smoke + build-to-tempdir over every releasable pack."""
     failures: list[str] = []
-    names = packs if packs is not None else cc._packs()
+    if packs is not None:
+        pack_roots = tuple(_resolve_pack(pack) for pack in packs)
+    else:
+        root = os.path.abspath(packs_root) if packs_root is not None else SCEN
+        pack_roots = tuple(
+            os.path.join(root, name)
+            for name in cc._packs(
+                root,
+                failures,
+                require_root=packs_root is not None,
+            )
+        )
     checked = 0
-    for name in names:
-        pack_root = os.path.join(SCEN, name)
+    for pack_root in pack_roots:
+        name = os.path.basename(pack_root)
         if not is_releasable(pack_root):
             print(f"  [skip] {name}: not releasable "
                   "(no compatibility manifest with artifact_boundaries)")
@@ -734,8 +750,13 @@ def main(argv: list[str] | None = None) -> int:
     bp.add_argument("--out", required=True)
     bp.add_argument("--build-provenance", action="store_true")
     cp = sub.add_parser("check")
-    cp.add_argument("--all", action="store_true")
-    cp.add_argument("--pack")
+    check_target = cp.add_mutually_exclusive_group()
+    check_target.add_argument("--all", action="store_true")
+    check_target.add_argument("--pack")
+    check_target.add_argument(
+        "--packs-root",
+        help="Directory whose direct child directories are all pack candidates.",
+    )
     args = parser.parse_args(argv)
 
     dispatch = {
@@ -744,7 +765,12 @@ def main(argv: list[str] | None = None) -> int:
         "metadata": lambda: _cmd_metadata(args),
         "build": lambda: _cmd_build(args),
         "check": lambda: _report(
-            "PACK RELEASE GATE", check([args.pack] if args.pack else None)),
+            "PACK RELEASE GATE",
+            check(
+                [args.pack] if args.pack else None,
+                packs_root=args.packs_root,
+            ),
+        ),
     }
     handler = dispatch.get(args.cmd)
     return handler() if handler else 2

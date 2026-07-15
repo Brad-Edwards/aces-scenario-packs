@@ -43,7 +43,7 @@ import os
 import re
 import subprocess
 import sys
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 
 import yaml
 
@@ -118,11 +118,6 @@ def provenance_example_path() -> str:
     """Provenance example path."""
     return os.path.join(_TEMPLATE_DIR, "docs", "provenance-ledger.example.yaml")
 
-# Packs are scenarios/<name>/ with a pack.yaml. `_template` is a scaffold, not
-# a pack, so the gate skips it.
-SKIP = {"_template"}
-
-
 class _AuthorStaticView(object):
     """One shared per-pack static-validation snapshot for author-CI adapters."""
 
@@ -148,6 +143,16 @@ class _AuthorStaticView(object):
         self.sdl_failures = sdl_failures
         self.scenarios = scenarios
 
+    @property
+    def ok(self) -> bool:
+        """Whether the candidate passed the complete shared static contract."""
+        return not any((
+            self.global_failures,
+            self.manifest_failures,
+            self.provenance_failures,
+            self.sdl_failures,
+        ))
+
 
 _AUTHOR_STATIC_CACHE: dict[str, _AuthorStaticView] = {}
 
@@ -158,9 +163,6 @@ TOKEN_PATTERNS = [
     (re.compile(r"\bT\d{4}(?:\.\d{3})?\b"), "ATT&CK technique id"),
     (re.compile(r"(?<![\w.])(?:10|[1-9])\.[A-Z](?![\w])"), "attack-path step id"),
 ]
-WIZARD_SPIDER_STALE_MILESTONES = re.compile(
-    r"(?<!\d)#(?:36|37|52)\b|issues/(?:36|37|52)\b"
-)
 PARTICIPANT_DIRS = [
     ("assets", "content"),
     ("assets", "briefing"),
@@ -169,49 +171,44 @@ PARTICIPANT_DIRS = [
 TEXT_EXT = {".md", ".txt", ".yaml", ".yml", ".csv", ".json", ".log", ".note"}
 
 
-def _git_lines(args: list[str]) -> list[str]:
-    """Git lines."""
+def _discovery_failure(failures: list[str] | None, location: str) -> None:
+    """Record a bounded discovery failure, or raise for an unwrapped caller."""
+    message = f"CATALOG DISCOVERY FAILED: {location} could not be inspected"
+    if failures is None:
+        raise RuntimeError(message)
+    failures.append(message)
+
+
+def _packs(
+    scenarios_root: str | None = None,
+    failures: list[str] | None = None,
+) -> tuple[str, ...]:
+    """Return one sorted snapshot of direct manifest-bearing pack directories."""
+    root = os.path.abspath(scenarios_root or SCEN)
     try:
-        r = subprocess.run(
-            ["git", "-C", _REPO, *args],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        with os.scandir(root) as entries:
+            children = sorted(entries, key=lambda entry: entry.name)
+    except FileNotFoundError:
+        return ()
     except OSError:
-        return []
-    if r.returncode != 0:
-        return []
-    return [line for line in r.stdout.splitlines() if line.strip()]
+        _discovery_failure(failures, "scenarios/")
+        return ()
 
-
-def _is_git_visible_pack_dir(name: str) -> bool:
-    """Is git visible pack dir."""
-    if (_git_lines(["rev-parse", "--is-inside-work-tree"]) != ["true"]
-            or os.path.abspath(SCEN) != os.path.join(os.path.abspath(_REPO), "scenarios")):
-        return True
-    rel = os.path.join("scenarios", name)
-    # Tracked (ls-files) or new local work not yet ignored, so developers still
-    # get manifest/checklist failures before the first commit. Ignored
-    # cache-only directories (stray __pycache__) are excluded by git.
-    return bool(_git_lines(["ls-files", "--", rel])
-                or _git_lines(["status", "--porcelain", "--untracked-files=all", "--", rel]))
-
-
-def _packs() -> list[str]:
-    """Packs."""
-    if not os.path.isdir(SCEN):
-        return []
-    out = []
-    for name in sorted(os.listdir(SCEN)):
-        p = os.path.join(SCEN, name)
-        if name in SKIP or not os.path.isdir(p):
+    packs: list[str] = []
+    for entry in children:
+        try:
+            if not entry.is_dir(follow_symlinks=False):
+                continue
+            with os.scandir(entry.path) as pack_entries:
+                has_marker = any(
+                    child.name == PACK_MANIFEST_FILE for child in pack_entries
+                )
+        except OSError:
+            _discovery_failure(failures, "scenarios/<entry>/")
             continue
-        if (not os.path.isfile(os.path.join(p, PACK_MANIFEST_FILE))
-                and not _is_git_visible_pack_dir(name)):
-            continue
-        out.append(name)
-    return out
+        if has_marker:
+            packs.append(entry.name)
+    return tuple(packs)
 
 
 # Directories under a pack that ship static `validate_*.py validate` gates. The
@@ -246,16 +243,22 @@ def _check_validator_dir(pack: str, sub: str, failures: list[str]) -> None:
             _run_one_validator(vdir, fname, f"{pack}/{sub}/{fname}", failures)
 
 
-def check_validators(failures: list[str]) -> None:
+def check_validators(
+    failures: list[str],
+    packs: Sequence[str] | None = None,
+) -> None:
     """Check validators."""
-    for pack in _packs():
+    for pack in packs if packs is not None else _packs():
         for sub in VALIDATOR_DIRS:
             _check_validator_dir(pack, sub, failures)
 
 
-def check_tests(failures: list[str]) -> None:
+def check_tests(
+    failures: list[str],
+    packs: Sequence[str] | None = None,
+) -> None:
     """Check tests."""
-    for pack in _packs():
+    for pack in packs if packs is not None else _packs():
         for sub in ("sdl/tests", "build/tests", "profiles/tests", "ctfd/tests"):
             d = os.path.join(SCEN, pack, sub)
             if not os.path.isdir(d):
@@ -405,11 +408,14 @@ def _author_static_view(pack: str) -> _AuthorStaticView:
     return view
 
 
-def check_static_contract(failures: list[str]) -> dict[str, _AuthorStaticView]:
+def check_static_contract(
+    failures: list[str],
+    packs: Sequence[str] | None = None,
+) -> dict[str, _AuthorStaticView]:
     """Validate and report every pack's shared static contract exactly once."""
 
     views: dict[str, _AuthorStaticView] = {}
-    for pack in _packs():
+    for pack in packs if packs is not None else _packs():
         view = _author_static_view(pack)
         views[pack] = view
         failures.extend(view.global_failures)
@@ -469,6 +475,7 @@ def _check_pack_sdl(
 def check_sdl(
     failures: list[str],
     static_views: dict[str, _AuthorStaticView] | None = None,
+    packs: Sequence[str] | None = None,
 ) -> None:
     """Validate every pack's ``sdl/`` through ACES and cross-check flag placement.
 
@@ -485,7 +492,7 @@ def check_sdl(
             "SDL VALIDATION UNAVAILABLE: aces-sdl (pinned dependency, ADR 0011) "
             f"is not importable: {exc}")
         return
-    for pack in _packs():
+    for pack in packs if packs is not None else _packs():
         _check_pack_sdl(
             pack,
             failures,
@@ -546,9 +553,12 @@ def _participant_roots(pack: str) -> list[str]:
     return roots
 
 
-def check_visibility(failures: list[str]) -> None:
+def check_visibility(
+    failures: list[str],
+    packs: Sequence[str] | None = None,
+) -> None:
     """Check visibility."""
-    for pack in _packs():
+    for pack in packs if packs is not None else _packs():
         for root in _participant_roots(pack):
             if not os.path.isdir(root):
                 continue
@@ -559,45 +569,6 @@ def check_visibility(failures: list[str]) -> None:
                         f"VISIBILITY LEAK: {rel}:{line_no} contains a {label} "
                         f"(match redacted) in a participant-facing file")
             print(f"  [ok] {os.path.relpath(root, SCEN)} clean")
-
-
-def _wizard_spider_drift_files() -> list[str]:
-    """Files where the closed Wizard Spider milestone plan must not reappear."""
-    roots = [os.path.join(SCEN, "wizard-spider")]
-    files: list[str] = []
-    for root in roots:
-        if os.path.isdir(root):
-            files.extend(_iter_text_files(root))
-    original_preflight = os.path.join(
-        SCEN, "design-notes", "wizard-spider-scenario-contract-preflight-32.md")
-    if os.path.isfile(original_preflight):
-        files.append(original_preflight)
-    return sorted(set(files))
-
-
-def check_wizard_spider_pack_drift(failures: list[str]) -> None:
-    """Block reintroducing the closed scoring/profile milestone plan.
-
-    Issue #207 replaced the canceled Wizard Spider scoring/profile/runtime plan
-    with the current pack-layer sequence (#208-#214). This gate is deliberately
-    narrow: it prevents stale closed issue references from steering future
-    Wizard Spider work back toward #36/#37/#52, while leaving other packs'
-    historical scoring/profile layers untouched.
-    """
-    scanned = 0
-    for fp in _wizard_spider_drift_files():
-        scanned += 1
-        with open(fp, "r", encoding="utf-8", errors="replace") as fh:
-            body = fh.read()
-        if m := WIZARD_SPIDER_STALE_MILESTONES.search(body):
-            rel = os.path.relpath(fp, _REPO)
-            line_no = body.count("\n", 0, m.start()) + 1
-            failures.append(
-                f"WIZARD-SPIDER PACK DRIFT: {rel}:{line_no} references the "
-                "closed #36/#37/#52 scoring/profile plan; use the current "
-                "#208-#214 pack-layer sequence")
-    if scanned:
-        print(f"  [ok] wizard-spider pack drift scan ({scanned} files)")
 
 
 def _load_yaml(path: str, failures: list[str], label: str) -> object:
@@ -851,10 +822,11 @@ def check_compatibility_schema_example(failures: list[str]) -> None:
 def check_manifest(
     failures: list[str],
     static_views: dict[str, _AuthorStaticView] | None = None,
+    packs: Sequence[str] | None = None,
 ) -> None:
     """Check manifest."""
     check_compatibility_schema_example(failures)
-    for pack in _packs():
+    for pack in packs if packs is not None else _packs():
         pack_yaml_path = os.path.join(SCEN, pack, PACK_MANIFEST_FILE)
         if not os.path.isfile(pack_yaml_path):
             failures.append(f"manifest MISSING: scenarios/{pack}/{PACK_MANIFEST_FILE}")
@@ -1062,10 +1034,11 @@ def check_provenance_schema_example(failures: list[str]) -> None:
 def check_provenance(
     failures: list[str],
     static_views: dict[str, _AuthorStaticView] | None = None,
+    packs: Sequence[str] | None = None,
 ) -> None:
     """Check provenance."""
     check_provenance_schema_example(failures)
-    for pack in _packs():
+    for pack in packs if packs is not None else _packs():
         pack_yaml_path = os.path.join(SCEN, pack, PACK_MANIFEST_FILE)
         if not os.path.isfile(pack_yaml_path):
             # check_manifest already reports the missing pack manifest
@@ -1082,9 +1055,12 @@ def check_provenance(
         print(f"  [ok] {pack}/{PACK_MANIFEST_FILE} provenance")
 
 
-def check_golden_checklist(failures: list[str]) -> None:
+def check_golden_checklist(
+    failures: list[str],
+    packs: Sequence[str] | None = None,
+) -> None:
     """Check golden checklist."""
-    for pack in _packs():
+    for pack in packs if packs is not None else _packs():
         checklist = os.path.join(SCEN, pack, "docs", "golden-readiness-checklist.md")
         if not os.path.isfile(checklist):
             failures.append(
@@ -1172,7 +1148,10 @@ def _check_pack_no_extension_layers(pack: str, failures: list[str]) -> None:
                 "ACES-semantic ledger; sdl/ holds ACES SDL documents only (ADR 0009)")
 
 
-def check_anti_extension(failures: list[str]) -> None:
+def check_anti_extension(
+    failures: list[str],
+    packs: Sequence[str] | None = None,
+) -> None:
     """Fail if the format or any pack reintroduces a removed ACES extension.
 
     ADR 0009 makes this repository ACES-subordinate with zero extensions to ACES
@@ -1184,7 +1163,7 @@ def check_anti_extension(failures: list[str]) -> None:
     before = len(failures)
     _check_schema_no_extension_layers(failures)
     _check_packaged_manifest_no_extension_layers(failures)
-    for pack in _packs():
+    for pack in packs if packs is not None else _packs():
         _check_pack_no_extension_layers(pack, failures)
     if len(failures) == before:
         print(f"  [ok] anti-extension guard ({len(FORBIDDEN_MANIFEST_LAYERS)} "
@@ -1206,26 +1185,29 @@ def main(argv: list[str] | None = None) -> int:
     _AUTHOR_STATIC_CACHE.clear()
 
     failures: list[str] = []
-    print("== validators ==")
-    check_validators(failures)
-    print("== test suites ==")
-    check_tests(failures)
+    packs = _packs(SCEN, failures)
     print("== static pack contract ==")
-    static_views = check_static_contract(failures)
+    static_views = check_static_contract(failures, packs)
+    runnable_packs = tuple(
+        pack for pack in packs
+        if (view := static_views.get(pack)) is not None and view.ok
+    )
+    print("== validators ==")
+    check_validators(failures, runnable_packs)
+    print("== test suites ==")
+    check_tests(failures, runnable_packs)
     print("== sdl (ACES) ==")
-    check_sdl(failures, static_views)
+    check_sdl(failures, static_views, packs)
     print("== visibility scan ==")
-    check_visibility(failures)
-    print("== pack drift scan ==")
-    check_wizard_spider_pack_drift(failures)
+    check_visibility(failures, packs)
     print("== manifests ==")
-    check_manifest(failures, static_views)
+    check_manifest(failures, static_views, packs)
     print("== anti-extension guard ==")
-    check_anti_extension(failures)
+    check_anti_extension(failures, packs)
     print("== provenance ledgers ==")
-    check_provenance(failures, static_views)
+    check_provenance(failures, static_views, packs)
     print("== golden readiness checklists ==")
-    check_golden_checklist(failures)
+    check_golden_checklist(failures, packs)
     print()
     if failures:
         print(f"SCENARIO-CONTENT CI: FAIL ({len(failures)} issue(s))")

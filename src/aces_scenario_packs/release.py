@@ -661,7 +661,7 @@ def smoke_pack(pack_root: str) -> list[str]:
 def check(packs: list[str] | None = None) -> list[str]:
     """Lint + smoke + build-to-tempdir over every releasable pack."""
     failures: list[str] = []
-    names = packs if packs is not None else cc._packs()
+    names = tuple(packs) if packs is not None else cc._packs(SCEN, failures)
     checked = 0
     for name in names:
         pack_root = os.path.join(SCEN, name)

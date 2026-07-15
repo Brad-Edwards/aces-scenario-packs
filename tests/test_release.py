@@ -26,6 +26,7 @@ import importlib.util
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 import yaml
 
@@ -347,6 +348,20 @@ class CheckAllTests(unittest.TestCase):
     def test_check_all_passes_on_current_repo(self):
         failures = PR.check()
         self.assertEqual(failures, [], "\n".join(failures))
+
+    def test_check_all_uses_shared_discovery_and_surfaces_its_failures(self):
+        def fail_discovery(root, failures):
+            self.assertEqual(root, PR.SCEN)
+            failures.append("CATALOG DISCOVERY FAILED: scenarios directory unreadable")
+            return ()
+
+        with mock.patch.object(PR.cc, "_packs", side_effect=fail_discovery):
+            failures = PR.check()
+
+        self.assertEqual(
+            failures,
+            ["CATALOG DISCOVERY FAILED: scenarios directory unreadable"],
+        )
 
 
 if __name__ == "__main__":

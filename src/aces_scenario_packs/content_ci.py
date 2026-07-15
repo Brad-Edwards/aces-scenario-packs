@@ -306,7 +306,7 @@ def _killpg(pgid: int) -> None:
     """SIGKILL an entire child process group, ignoring an already-gone group."""
     try:
         os.killpg(pgid, signal.SIGKILL)
-    except (ProcessLookupError, PermissionError, OSError):
+    except OSError:
         pass
 
 
@@ -326,6 +326,7 @@ def _run_pack_process(argv: list[str], cwd: str) -> _ProcOutcome:
     a wedged descendant can never hang the gate. Both pipes are drained under a
     hard byte cap rather than captured without limit and truncated afterward.
     """
+    proc: subprocess.Popen[bytes] | None = None
     try:
         child_env = os.environ.copy()
         child_env["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -333,34 +334,41 @@ def _run_pack_process(argv: list[str], cwd: str) -> _ProcOutcome:
             argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             env=child_env, start_new_session=True)
     except OSError:
-        return _ProcOutcome("launch-failed", None, "", "")
-    pgid = proc.pid  # start_new_session makes the child its own group leader
-    out = _PipeDrainer(proc.stdout, _EXEC_MAX_OUTPUT_BYTES)
-    err = _PipeDrainer(proc.stderr, _EXEC_MAX_OUTPUT_BYTES)
-    out.start()
-    err.start()
-    timed_out = False
-    try:
-        proc.wait(timeout=_EXEC_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        _killpg(pgid)
-        proc.wait()
-    out.join(_EXEC_JOIN_GRACE_SECONDS)
-    err.join(_EXEC_JOIN_GRACE_SECONDS)
-    if out.is_alive() or err.is_alive():
-        # A descendant still holds a pipe open — kill the group so it reaches EOF.
+        status, returncode, stdout, stderr = "launch-failed", None, "", ""
+    if proc is not None:
+        # start_new_session makes the child its own process-group leader.
+        pgid = proc.pid
+        out = _PipeDrainer(proc.stdout, _EXEC_MAX_OUTPUT_BYTES)
+        err = _PipeDrainer(proc.stderr, _EXEC_MAX_OUTPUT_BYTES)
+        out.start()
+        err.start()
+        timed_out = False
+        try:
+            proc.wait(timeout=_EXEC_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            _killpg(pgid)
+            proc.wait()
+        # A successful direct child may still have live descendants. Always
+        # terminate the remaining group before waiting for pipe EOF.
         _killpg(pgid)
         out.join(_EXEC_JOIN_GRACE_SECONDS)
         err.join(_EXEC_JOIN_GRACE_SECONDS)
-    if timed_out:
-        return _ProcOutcome("timeout", None, out.text(), err.text())
-    rc = proc.returncode
-    if rc == 0:
-        return _ProcOutcome("ok", 0, out.text(), err.text())
-    if rc < 0:
-        return _ProcOutcome("signal", rc, out.text(), err.text())
-    return _ProcOutcome("failed", rc, out.text(), err.text())
+        if out.is_alive() or err.is_alive():
+            _killpg(pgid)
+            out.join(_EXEC_JOIN_GRACE_SECONDS)
+            err.join(_EXEC_JOIN_GRACE_SECONDS)
+        stdout, stderr = out.text(), err.text()
+        rc = proc.returncode
+        if timed_out:
+            status, returncode = "timeout", None
+        elif rc == 0:
+            status, returncode = "ok", 0
+        elif rc < 0:
+            status, returncode = "signal", rc
+        else:
+            status, returncode = "failed", rc
+    return _ProcOutcome(status, returncode, stdout, stderr)
 
 
 def _record_outcome(kind: str, tag: str, outcome: _ProcOutcome,
@@ -378,18 +386,18 @@ def _record_outcome(kind: str, tag: str, outcome: _ProcOutcome,
         if outcome.stderr.strip():
             summary = f" ({outcome.stderr.strip().splitlines()[-1]})"
         print(f"  [ok] {tag}{summary}")
-        return
-    if outcome.status == "launch-failed":
-        failures.append(f"{kind} LAUNCH FAILED: {tag}")
-        return
-    if outcome.status == "timeout":
-        failures.append(f"{kind} TIMED OUT after {_EXEC_TIMEOUT_SECONDS}s: {tag}")
-        return
-    if outcome.status == "signal":
-        failures.append(f"{kind} KILLED by signal {-outcome.returncode}: {tag}")
-        return
-    tail = outcome.stdout[-_EXEC_TAIL_CHARS:] + outcome.stderr[-_EXEC_TAIL_CHARS:]
-    failures.append(f"{kind} FAILED: {tag}\n{tail}")
+    else:
+        if outcome.status == "launch-failed":
+            failure = f"{kind} LAUNCH FAILED: {tag}"
+        elif outcome.status == "timeout":
+            failure = f"{kind} TIMED OUT after {_EXEC_TIMEOUT_SECONDS}s: {tag}"
+        elif outcome.status == "signal":
+            failure = f"{kind} KILLED by signal {-outcome.returncode}: {tag}"
+        else:
+            tail = (outcome.stdout[-_EXEC_TAIL_CHARS:]
+                    + outcome.stderr[-_EXEC_TAIL_CHARS:])
+            failure = f"{kind} FAILED: {tag}\n{tail}"
+        failures.append(failure)
 
 
 def _stat_identity(value: os.stat_result) -> tuple[int, int, int, int, int, int, int]:

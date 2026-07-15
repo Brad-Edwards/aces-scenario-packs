@@ -11,6 +11,31 @@ this file at release-prep. See [`changelog.d/README.md`](changelog.d/README.md).
 
 <!-- towncrier release notes start -->
 
+## [2.0.0](https://github.com/Brad-Edwards/aces-scenario-packs/compare/v1.2.0...v2.0.0) (2026-07-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* provenance schema_version is now scenario-pack-provenance/v2 with sources[].kind removed; the scenario-pack contract version is 3; a challenges[].category field is rejected by validation (ADR 0014).
+* remove bespoke oracle model ([#109](https://github.com/Brad-Edwards/aces-scenario-packs/issues/109))
+
+### Features
+
+* align pack vocabularies to ACES concept-authority ([#111](https://github.com/Brad-Edwards/aces-scenario-packs/issues/111)) ([e8a20e6](https://github.com/Brad-Edwards/aces-scenario-packs/commit/e8a20e6008406d274a3157291d715f48e296c891))
+* discover all supported pack checks ([#117](https://github.com/Brad-Edwards/aces-scenario-packs/issues/117)) ([a8ddd35](https://github.com/Brad-Edwards/aces-scenario-packs/commit/a8ddd35f8bb610facb9c5d3dd19957ac54d6b752))
+* remove bespoke oracle model ([#109](https://github.com/Brad-Edwards/aces-scenario-packs/issues/109)) ([6cadaf3](https://github.com/Brad-Edwards/aces-scenario-packs/commit/6cadaf3032515cf82c0419ac420fa7825e2f3fca))
+
+
+### Bug Fixes
+
+* accept explicit pack validation roots ([#116](https://github.com/Brad-Edwards/aces-scenario-packs/issues/116)) ([74dbac8](https://github.com/Brad-Edwards/aces-scenario-packs/commit/74dbac8da4da3bf95cf523f3a918eaa31a83ab68))
+* adopt ACES schema $id namespace and schema_version string form ([#110](https://github.com/Brad-Edwards/aces-scenario-packs/issues/110)) ([7c2f305](https://github.com/Brad-Edwards/aces-scenario-packs/commit/7c2f3054d487b29b4cba38ac331bbdd0c715e873))
+
+
+### Documentation
+
+* add migration scrub policy ([#108](https://github.com/Brad-Edwards/aces-scenario-packs/issues/108)) ([1913856](https://github.com/Brad-Edwards/aces-scenario-packs/commit/1913856e3988eef5c23c04695b0bf1590c1f8035))
+
 ## [1.2.0](https://github.com/Brad-Edwards/aces-scenario-packs/compare/v1.1.0...v1.2.0) (2026-07-13)
 
 

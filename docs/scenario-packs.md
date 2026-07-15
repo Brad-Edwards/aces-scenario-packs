@@ -197,6 +197,20 @@ explicit upstream pin lands once ACES marks it stable. The bundled
 [layout contract](../src/aces_scenario_packs/resources/contract/pack-layout.md)
 carries the full field-by-field mapping.
 
+**ACES concept-authority governs concept vocabulary.** ATT&CK and ATLAS
+offensive-behaviour tactics, UCO concept families, and the controlled
+vocabularies are published by ACES under `contracts/concept-authority/` and are
+authored and validated in ACES SDL behaviour specifications, not restated in the
+pack format. The provenance ledger therefore carries no `sources[].kind`, and the
+canonical challenge contract carries no `challenges[].category`; both were
+free-text overlaps of governed concepts, and a challenge's presentation grouping
+is an adapter-local CTFd concern. The remaining pack vocabulary (distribution
+class, source licensing/usage, review gates, challenge display text, delivery
+audiences, visibility) is genuinely pack-domain. This advanced the provenance
+schema to `scenario-pack-provenance/v2` and the scenario-pack contract to
+version 3. See
+[ADR 0014](decisions/adrs/0014-consume-aces-concept-authority.md).
+
 ## Pack Content Identity
 
 A consumer that ingests a pack by reference (path/key + version + digest) needs

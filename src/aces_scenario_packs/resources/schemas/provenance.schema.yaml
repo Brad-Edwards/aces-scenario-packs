@@ -1,5 +1,5 @@
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://aces.dev/schemas/scenario-pack-provenance-v1.json"
+$id: "https://aces.dev/schemas/scenario-pack-provenance-v2.json"
 title: ACES scenario pack provenance ledger (pack-domain; trust deferred to ACES)
 description: >
   Machine-readable pack-domain ledger for a scenario pack's content ORIGIN &
@@ -35,16 +35,28 @@ description: >
   publish, sell, or hand a customer", the other answers "who sees it at runtime".
   The legacy `oracle` visibility value is only a restricted-release label; it
   defines no scenario semantics.
+
+  ACES concept-authority (contracts/concept-authority/ — controlled vocabularies,
+  ATT&CK/ATLAS tactic sources, UCO alignment) is the authority for governed
+  concept vocabulary. A source row records only pack-domain content-origin,
+  licensing, attribution, and usage facts; it does NOT classify a source with a
+  governed concept taxonomy. A behaviour's use of an ACES-governed tactic is
+  expressed in ACES SDL behaviour specifications and validated by ACES, never
+  restated here (ADR 0009/ADR 0014).
 $comment: >
-  ACES-alignment field disposition (issue #82; see contract/pack-layout.md and
-  docs/scenario-packs.md for the full mapping). Every retained field is either
+  ACES-alignment field disposition (issues #82, #87; see contract/pack-layout.md
+  and docs/scenario-packs.md for the full mapping). Every retained field is either
   mapped to an ACES trust concept or documented as pack-domain absent upstream —
-  and NONE re-defines an ACES-owned evidence class:
+  and NONE re-defines an ACES-owned evidence class or a governed concept
+  vocabulary:
   • pack / schema_version — pack-domain: ledger identity & version.
   • sources[] — pack-domain: content-origin licensing/attribution of external,
     non-ACES material. Distinct from the ACES provenance_lock_record evidence
     class (aces.lock.json digest-pinning of composed ACES modules), which stays
-    with ACES; this ledger does not attest module-dependency provenance.
+    with ACES; this ledger does not attest module-dependency provenance. Carries
+    NO concept vocabulary: the removed `kind` classification is not restated —
+    governed ATT&CK/ATLAS/UCO concepts live in ACES concept-authority and ACES
+    SDL (ADR 0014).
   • artifacts[].classification — pack-domain: distribution/redistribution rights;
     not an ACES trust enforcement level.
   • content_safety — pack-domain: exclusion attestations; ACES defines no
@@ -66,7 +78,7 @@ required:
 properties:
   schema_version:
     type: string
-    const: "scenario-pack-provenance/v1"
+    const: "scenario-pack-provenance/v2"
   pack:
     type: object
     additionalProperties: false
@@ -88,22 +100,15 @@ properties:
     items:
       type: object
       additionalProperties: false
-      required: [source_id, kind, name, license, usage, attribution_required]
+      # No `kind` classification: a source row records only content-origin,
+      # licensing, attribution, and usage. Governed concept vocabulary (ATT&CK/
+      # ATLAS tactics, UCO alignment) is owned by ACES concept-authority and
+      # expressed in ACES SDL, not restated here (ADR 0014).
+      required: [source_id, name, license, usage, attribution_required]
       properties:
         source_id:
           type: string
           pattern: "^[a-z0-9][a-z0-9_-]*[a-z0-9]$"
-        kind:
-          type: string
-          enum:
-            - framework          # e.g. MITRE ATT&CK
-            - emulation-corpus   # e.g. MITRE CTID AEL, attackevals/ael
-            - tooling            # e.g. Atomic Red Team, CALDERA, OSS stack
-            - dataset            # e.g. Synthea / MIMIC-derived corpora
-            - research           # CTI reports, advisories, papers
-            - original           # original ACES design / fiction
-            - generated          # machine/seed-generated material
-            - customer-overlay   # a customer-specific overlay source
         name:
           type: string
         url:

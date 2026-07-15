@@ -6,10 +6,12 @@ by review" — so a regression cannot ship just because a reviewer forgot to run
 the validators. Validates one explicit pack or every direct child of an explicit
 packs root:
 
-  1. **Validators** — every ``scenarios/*/sdl/validate_*.py validate`` exits 0.
-  2. **Test suites** — every ``scenarios/*/sdl/tests``,
-     ``scenarios/*/build/tests``, ``scenarios/*/profiles/tests``, and
-     ``scenarios/*/ctfd/tests`` unittest suite passes.
+  1. **Validators** — every direct ``validate_*.py validate`` under each
+     supported validator root (``sdl``, ``validation``, ``profiles``, ``flags``)
+     exits 0.
+  2. **Test suites** — every supported unittest suite passes: ``sdl/tests``,
+     ``validation/tests``, ``build/tests``, ``profiles/tests``, ``ctfd/tests``,
+     and the pack-root ``tests`` suite.
   3. **Visibility / leak scan** — no restricted operator token (``S-*`` states,
      ``<n>.<L>`` step ids, ATT&CK technique ids, ``S1.*``/``S2.*`` source
      labels) appears in any participant-facing surface (``assets/content/**``,
@@ -42,14 +44,18 @@ from __future__ import annotations
 
 import os
 import re
+import signal
 import subprocess
 import sys
+import threading
 from collections.abc import Callable, Iterator, Sequence
 
 import yaml
 
+from aces_scenario_packs import _pack_fs
 from aces_scenario_packs.validation import (
     CONTENT_SAFETY_FLAGS as _SHARED_CONTENT_SAFETY_FLAGS,
+    PackValidationLimits,
     _schema_violations,
     _validate_pack_for_author_ci,
 )
@@ -211,9 +217,40 @@ def _packs(
     return tuple(packs)
 
 
-# Directories under a pack that ship static `validate_*.py validate` gates. The
-# sdl ledgers (#21–#24) and the delivery-profile bundles (#50) both ship one.
-VALIDATOR_DIRS = ("sdl", "profiles")
+# Author-CI executable-discovery contract (ADR 0013). Both root sets are closed
+# and ordered: discovery never recursively invents new roots, infers locations
+# from catalog names, or maintains downstream-specific skip lists. Adding a root
+# is a deliberate change to these tuples plus a contract test.
+#
+# Direct `validate_*.py validate` gates live under these roots (the sdl ledgers
+# #21-#24, the pack validation harness, the delivery-profile bundles #50, and
+# the flag layer each ship one).
+VALIDATOR_DIRS = ("sdl", "validation", "profiles", "flags")
+# Unittest suites live under these roots; the pack-root `tests` suite is last.
+TEST_DIRS = (
+    "sdl/tests",
+    "validation/tests",
+    "build/tests",
+    "profiles/tests",
+    "ctfd/tests",
+    "tests",
+)
+
+# Subprocess execution budget for pack-local validators and tests. These are
+# process limits (retained output bytes, wall-clock deadline) kept deliberately
+# separate from PackValidationLimits, which bounds static parser input, not a
+# running child (ADR 0013).
+_EXEC_MAX_OUTPUT_BYTES = 64 * 1024
+_EXEC_READ_CHUNK = 64 * 1024
+_EXEC_TIMEOUT_SECONDS = 300
+# Bounded backstop for joining the drainer threads, so a descendant that kept a
+# pipe open can never hang the gate past this grace before the group is killed.
+_EXEC_JOIN_GRACE_SECONDS = 10
+# Bounded tail (per stream) rendered into the failure envelope on a nonzero exit.
+_EXEC_TAIL_CHARS = 1200
+# Inventory member budget, shared with static validation so discovery and
+# execution operate on the same safe inventory (ADR 0012 / ADR 0013).
+_INVENTORY_MAX_MEMBERS = PackValidationLimits().max_members
 
 # SDL-through-ACES gate (#84, ADR 0011). Every pack's start state lives under
 # `sdl/` as one or more `*.sdl.yaml` documents authored in ACES SDL; the
@@ -223,54 +260,340 @@ SDL_DOC_SUFFIX = ".sdl.yaml"
 PLACEMENT_REL = os.path.join("flags", "placement.yaml")
 
 
-def _run_one_validator(vdir: str, fname: str, tag: str, failures: list[str]) -> None:
-    """Run one validator."""
-    r = subprocess.run([sys.executable, os.path.join(vdir, fname), "validate"],
-                       capture_output=True, text=True)
-    if r.returncode != 0:
-        failures.append(f"validator FAILED: {tag}\n{r.stdout[-800:]}{r.stderr[-800:]}")
-    else:
-        print(f"  [ok] {tag}")
+class _PipeDrainer(threading.Thread):
+    """Drain one child pipe fully while retaining only its bounded tail.
+
+    Reading continues past the cap (older bytes are dropped) so the child never
+    blocks on a full pipe — that is what keeps the bounded capture deadlock-free
+    — while memory stays bounded to roughly the cap. The retained tail matches
+    the historical `[-N:]` slice that carries the actionable error / summary.
+    """
+
+    def __init__(self, stream: object, cap: int) -> None:
+        super().__init__(daemon=True)
+        self._stream = stream
+        self._cap = cap
+        self._buf = bytearray()
+
+    def run(self) -> None:
+        try:
+            while chunk := self._stream.read(_EXEC_READ_CHUNK):
+                self._buf.extend(chunk)
+                if len(self._buf) > self._cap:
+                    del self._buf[: len(self._buf) - self._cap]
+        finally:
+            self._stream.close()
+
+    def text(self) -> str:
+        """Bounded tail decoded for the failure envelope."""
+        return bytes(self._buf).decode("utf-8", errors="replace")
 
 
-def _check_validator_dir(pack: str, sub: str, failures: list[str]) -> None:
-    """Check validator dir."""
-    vdir = os.path.join(SCEN, pack, sub)
-    if not os.path.isdir(vdir):
+class _ProcOutcome(object):
+    """The bounded, classified result of one pack-local subprocess."""
+
+    __slots__ = ("status", "returncode", "stdout", "stderr")
+
+    def __init__(self, status: str, returncode: int | None,
+                 stdout: str, stderr: str) -> None:
+        self.status = status
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def _killpg(pgid: int) -> None:
+    """SIGKILL an entire child process group, ignoring an already-gone group."""
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        pass
+
+
+def _run_pack_process(argv: list[str], cwd: str) -> _ProcOutcome:
+    """Run one pack-local command under the shared output/deadline budget.
+
+    Shared by the validator and unittest adapters so their byte cap, decode
+    policy, deadline, and abnormal-exit classification cannot drift (ADR 0013).
+    ``argv`` is a literal sequence headed by ``sys.executable`` (never shell
+    text); ``cwd`` is the contained pack root.
+
+    The child runs in its own process group (``start_new_session``) so a
+    descendant that inherited the pipe write-ends is killed with it and cannot
+    outlive the deadline — or the direct child — holding the drainers blocked on
+    ``read``. The drainer joins are bounded and, if a descendant still holds a
+    pipe after the direct child ends, the group is killed so the pipes reach EOF;
+    a wedged descendant can never hang the gate. Both pipes are drained under a
+    hard byte cap rather than captured without limit and truncated afterward.
+    """
+    try:
+        child_env = os.environ.copy()
+        child_env["PYTHONDONTWRITEBYTECODE"] = "1"
+        proc = subprocess.Popen(
+            argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env=child_env, start_new_session=True)
+    except OSError:
+        return _ProcOutcome("launch-failed", None, "", "")
+    pgid = proc.pid  # start_new_session makes the child its own group leader
+    out = _PipeDrainer(proc.stdout, _EXEC_MAX_OUTPUT_BYTES)
+    err = _PipeDrainer(proc.stderr, _EXEC_MAX_OUTPUT_BYTES)
+    out.start()
+    err.start()
+    timed_out = False
+    try:
+        proc.wait(timeout=_EXEC_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        _killpg(pgid)
+        proc.wait()
+    out.join(_EXEC_JOIN_GRACE_SECONDS)
+    err.join(_EXEC_JOIN_GRACE_SECONDS)
+    if out.is_alive() or err.is_alive():
+        # A descendant still holds a pipe open — kill the group so it reaches EOF.
+        _killpg(pgid)
+        out.join(_EXEC_JOIN_GRACE_SECONDS)
+        err.join(_EXEC_JOIN_GRACE_SECONDS)
+    if timed_out:
+        return _ProcOutcome("timeout", None, out.text(), err.text())
+    rc = proc.returncode
+    if rc == 0:
+        return _ProcOutcome("ok", 0, out.text(), err.text())
+    if rc < 0:
+        return _ProcOutcome("signal", rc, out.text(), err.text())
+    return _ProcOutcome("failed", rc, out.text(), err.text())
+
+
+def _record_outcome(kind: str, tag: str, outcome: _ProcOutcome,
+                    failures: list[str]) -> None:
+    """Render one shared process outcome into the bounded failure envelope.
+
+    Only the bounded, pack-relative ``tag`` and a bounded decoded tail enter the
+    envelope; the command line, absolute paths, and environment never do
+    (ADR 0013). This preserves — without weakening — the existing posture: the
+    visibility scan owns operator-token redaction, and the tail is size-bounded
+    exactly as the historical ``[-N:]`` slice was.
+    """
+    if outcome.status == "ok":
+        summary = ""
+        if outcome.stderr.strip():
+            summary = f" ({outcome.stderr.strip().splitlines()[-1]})"
+        print(f"  [ok] {tag}{summary}")
         return
-    for fname in sorted(os.listdir(vdir)):
-        if fname.startswith("validate_") and fname.endswith(".py"):
-            _run_one_validator(vdir, fname, f"{pack}/{sub}/{fname}", failures)
+    if outcome.status == "launch-failed":
+        failures.append(f"{kind} LAUNCH FAILED: {tag}")
+        return
+    if outcome.status == "timeout":
+        failures.append(f"{kind} TIMED OUT after {_EXEC_TIMEOUT_SECONDS}s: {tag}")
+        return
+    if outcome.status == "signal":
+        failures.append(f"{kind} KILLED by signal {-outcome.returncode}: {tag}")
+        return
+    tail = outcome.stdout[-_EXEC_TAIL_CHARS:] + outcome.stderr[-_EXEC_TAIL_CHARS:]
+    failures.append(f"{kind} FAILED: {tag}\n{tail}")
+
+
+def _stat_identity(value: os.stat_result) -> tuple[int, int, int, int, int, int, int]:
+    """Return the stable fields used to detect member replacement."""
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_mode,
+        value.st_nlink,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
+
+
+def _capture_execution_snapshot(
+    root_fd: int,
+) -> tuple[tuple[str, ...], tuple[tuple[str, tuple[int, ...]], ...]]:
+    """Capture the safe inventory and descriptor-anchored file identities."""
+    inventory = _pack_fs.inventory(
+        root_fd, max_members=_INVENTORY_MAX_MEMBERS)
+    identities: list[tuple[str, tuple[int, ...]]] = []
+    for rel in inventory:
+        fd = _pack_fs.open_member(root_fd, rel)
+        try:
+            identities.append((rel, _stat_identity(os.fstat(fd))))
+        finally:
+            os.close(fd)
+    return inventory, tuple(identities)
+
+
+class _ExecutablePack(object):
+    """One statically valid pack bound to a safe execution snapshot."""
+
+    __slots__ = (
+        "blocked",
+        "identities",
+        "inventory",
+        "root",
+        "root_fd",
+        "root_identity",
+    )
+
+    def __init__(
+        self,
+        root: str,
+        root_fd: int,
+        inventory: tuple[str, ...],
+        identities: tuple[tuple[str, tuple[int, ...]], ...],
+    ) -> None:
+        self.root = root
+        self.root_fd = root_fd
+        self.root_identity = _stat_identity(os.fstat(root_fd))
+        self.inventory = inventory
+        self.identities = identities
+        self.blocked = False
+
+
+def _open_safe_pack(
+    pack: str, label: str, failures: list[str],
+) -> _ExecutablePack | None:
+    """Open one pack root and build its safe inventory, or fail closed.
+
+    Returns an execution snapshot with its root descriptor open (the caller must
+    close it), or ``None`` after recording a stable refusal. No pack code runs
+    unless the statically valid pack also passes this descriptor-anchored
+    inventory and identity capture (ADR 0013).
+    """
+    pack_root = os.path.join(SCEN, pack)
+    try:
+        root, root_fd = _pack_fs.open_root(pack_root)
+    except _pack_fs.PackFilesystemError:
+        failures.append(
+            f"{label} UNSAFE: scenarios/{pack}: pack root is not a safe directory")
+        return None
+    try:
+        inventory, identities = _capture_execution_snapshot(root_fd)
+    except _pack_fs.PackFilesystemError as exc:
+        os.close(root_fd)
+        detail = ("member count exceeds the validation limit"
+                  if str(exc) == "pack member count exceeds the validation limit"
+                  else "contains an unsafe filesystem member")
+        failures.append(f"{label} UNSAFE: scenarios/{pack}: {detail}")
+        return None
+    return _ExecutablePack(root, root_fd, inventory, identities)
+
+
+def _discover_validators(inventory: Sequence[str]) -> list[str]:
+    """Direct ``<root>/validate_*.py`` members, in policy-then-name order."""
+    found: list[tuple[int, str, str]] = []
+    for rel in inventory:
+        head, _, tail = rel.partition("/")
+        if (head in VALIDATOR_DIRS and rel.count("/") == 1
+                and tail.startswith("validate_") and tail.endswith(".py")):
+            found.append((VALIDATOR_DIRS.index(head), tail, rel))
+    return [rel for _idx, _tail, rel in sorted(found)]
+
+
+def _discover_test_roots(inventory: Sequence[str]) -> list[str]:
+    """Supported test roots present in the inventory, in closed-policy order."""
+    return [sub for sub in TEST_DIRS
+            if any(rel.startswith(sub + "/") for rel in inventory)]
+
+
+def _execution_snapshot_unchanged(
+    pack: str,
+    executable: _ExecutablePack,
+    failures: list[str],
+) -> bool:
+    """Re-establish the inventory and identity invariant around each process."""
+    if executable.blocked:
+        return False
+    try:
+        path_stat = os.stat(executable.root, follow_symlinks=False)
+        inventory, identities = _capture_execution_snapshot(executable.root_fd)
+    except (OSError, _pack_fs.PackFilesystemError):
+        inventory, identities = (), ()
+        path_stat = None
+    if (
+        path_stat is None
+        or _stat_identity(path_stat) != executable.root_identity
+        or inventory != executable.inventory
+        or identities != executable.identities
+    ):
+        executable.blocked = True
+        failures.append(
+            f"pack-local execution CHANGED (rejected): {pack}: "
+            "filesystem identity changed after static validation"
+        )
+        return False
+    return True
+
+
+def discover_executables(
+    packs: Sequence[str], failures: list[str],
+) -> dict[str, _ExecutablePack]:
+    """Establish execution snapshots for statically valid packs only.
+
+    Both execution phases (validators, tests) consume this single map instead of
+    independently re-enumerating packs and rebuilding the inventory, so discovery
+    and execution operate on one safe inventory established up front (ADR 0013).
+    Each eligible pack retains an open root descriptor and member-identity
+    snapshot. The caller closes every descriptor after both phases. A pack that
+    failed static validation is never passed here; an unsafe runnable pack is
+    recorded once and excluded, so no pack-local process runs for it.
+    """
+    eligible: dict[str, _ExecutablePack] = {}
+    for pack in packs:
+        safe = _open_safe_pack(pack, "pack-local execution", failures)
+        if safe is not None:
+            eligible[pack] = safe
+    return eligible
+
+
+def close_executables(eligible: dict[str, _ExecutablePack]) -> None:
+    """Close every pack root descriptor opened by :func:`discover_executables`."""
+    for executable in eligible.values():
+        os.close(executable.root_fd)
 
 
 def check_validators(
-    failures: list[str],
-    packs: Sequence[str] | None = None,
+    eligible: dict[str, _ExecutablePack], failures: list[str],
 ) -> None:
-    """Check validators."""
-    for pack in packs if packs is not None else _packs():
-        for sub in VALIDATOR_DIRS:
-            _check_validator_dir(pack, sub, failures)
+    """Run every eligible pack's ``validate_*.py validate`` gates, once each."""
+    for pack, executable in eligible.items():
+        seen: set[str] = set()
+        for rel in _discover_validators(executable.inventory):
+            if rel in seen:
+                continue
+            seen.add(rel)
+            tag = f"{pack}/{rel}"
+            if not _execution_snapshot_unchanged(pack, executable, failures):
+                break
+            _record_outcome(
+                "validator", tag,
+                _run_pack_process(
+                    [sys.executable, rel, "validate"], executable.root),
+                failures)
+            if not _execution_snapshot_unchanged(pack, executable, failures):
+                break
 
 
 def check_tests(
-    failures: list[str],
-    packs: Sequence[str] | None = None,
+    eligible: dict[str, _ExecutablePack], failures: list[str],
 ) -> None:
-    """Check tests."""
-    for pack in packs if packs is not None else _packs():
-        for sub in ("sdl/tests", "build/tests", "profiles/tests", "ctfd/tests"):
-            d = os.path.join(SCEN, pack, sub)
-            if not os.path.isdir(d):
+    """Run every eligible pack's unittest suites once, deterministically."""
+    for pack, executable in eligible.items():
+        if executable.blocked:
+            continue
+        seen: set[str] = set()
+        for sub in _discover_test_roots(executable.inventory):
+            if sub in seen:
                 continue
-            r = subprocess.run(
-                [sys.executable, "-m", "unittest", "discover", "-s", d],
-                capture_output=True, text=True, cwd=_REPO)
-            tag = f"{pack}/{sub}"
-            if r.returncode != 0:
-                failures.append(f"tests FAILED: {tag}\n{r.stderr[-1200:]}")
-            else:
-                print(f"  [ok] {tag} ({r.stderr.strip().splitlines()[-1] if r.stderr else 'ok'})")
+            seen.add(sub)
+            if not _execution_snapshot_unchanged(pack, executable, failures):
+                break
+            _record_outcome(
+                "tests", f"{pack}/{sub}",
+                _run_pack_process(
+                    [sys.executable, "-m", "unittest", "discover", "-s", sub],
+                    executable.root),
+                failures)
+            if not _execution_snapshot_unchanged(pack, executable, failures):
+                break
 
 
 def _load_aces_sdl() -> tuple[Callable[..., object], type[BaseException]]:
@@ -1211,10 +1534,16 @@ def main(argv: list[str] | None = None) -> int:
         pack for pack in packs
         if (view := static_views.get(pack)) is not None and view.ok
     )
-    print("== validators ==")
-    check_validators(failures, runnable_packs)
-    print("== test suites ==")
-    check_tests(failures, runnable_packs)
+    # Only packs that passed the static contract are eligible to execute code.
+    # One descriptor-anchored snapshot is shared by both execution phases.
+    eligible = discover_executables(runnable_packs, failures)
+    try:
+        print("== validators ==")
+        check_validators(eligible, failures)
+        print("== test suites ==")
+        check_tests(eligible, failures)
+    finally:
+        close_executables(eligible)
     print("== sdl (ACES) ==")
     check_sdl(failures, static_views, packs)
     print("== visibility scan ==")

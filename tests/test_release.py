@@ -91,9 +91,9 @@ def _make_pack(root: str, *, delivery_bundles, profile_bundles=False,
     _write(os.path.join(root, "assets", "briefing", "brief.md"), "# Mission brief\n")
 
     prov = {
-        "schema_version": "scenario-pack-provenance/v1",
+        "schema_version": "scenario-pack-provenance/v2",
         "pack": {"name": "synthpack"},
-        "sources": [{"source_id": "orig", "kind": "original-design"}],
+        "sources": [{"source_id": "orig"}],
         "artifacts": [{"artifact_id": "a1", "path": "assets/", "classification": "open"}],
         "content_safety": {
             "no_real_malware": True, "no_real_third_party_targets": True,
@@ -125,7 +125,7 @@ def _make_pack(root: str, *, delivery_bundles, profile_bundles=False,
 class ContractVersionTests(unittest.TestCase):
     def test_reads_version_and_digest_from_readme(self):
         version, digest = PR.load_contract_version()
-        self.assertEqual(version, "2")
+        self.assertEqual(version, "3")
         self.assertTrue(digest.startswith("sha256:"))
         self.assertEqual(len(digest), len("sha256:") + 64)
 

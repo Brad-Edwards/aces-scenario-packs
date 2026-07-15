@@ -365,6 +365,10 @@ def _partition_author_static_error(
         manifest_failures.append(
             f"compatibility manifest INVALID: scenarios/{pack}/{detail}: {code}"
         )
+    elif code.startswith("challenges."):
+        global_failures.append(
+            f"CHALLENGE INVALID: scenarios/{pack}/{detail}: {code}"
+        )
     else:
         global_failures.append(f"PACK STATIC INVALID: scenarios/{pack}: {code}")
 

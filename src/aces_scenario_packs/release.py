@@ -488,7 +488,6 @@ def _provenance_summary(ledger: object) -> dict[str, object]:
     all_true = bool(safety) and all(safety.get(flag) is True for flag in cc.CONTENT_SAFETY_FLAGS)
     return {
         "sources": len(sources) if isinstance(sources, list) else 0,
-        "source_kinds": _tally(sources, "kind"),
         "artifacts": len(artifacts) if isinstance(artifacts, list) else 0,
         "artifact_classes": _tally(artifacts, "classification"),
         "content_safety": {"all_true": all_true},

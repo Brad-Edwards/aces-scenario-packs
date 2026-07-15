@@ -724,10 +724,10 @@ class NewScenarioPackScriptTest(unittest.TestCase):
 def _valid_ledger(name: str = "testpack") -> dict:
     """A minimal ledger that satisfies the provenance schema + gate."""
     return {
-        "schema_version": "scenario-pack-provenance/v1",
+        "schema_version": "scenario-pack-provenance/v2",
         "pack": {"name": name},
         "sources": [
-            {"source_id": "original-design", "kind": "original",
+            {"source_id": "original-design",
              "name": "Original design", "license": "proprietary",
              "usage": "reused", "attribution_required": False},
         ],
@@ -805,7 +805,15 @@ class ProvenanceLedgerGateTest(unittest.TestCase):
 
     def test_schema_violation_is_flagged(self):
         bad = _valid_ledger()
-        bad["sources"][0]["kind"] = "not-a-kind"
+        bad["sources"][0]["usage"] = "not-a-usage"
+        blob = "\n".join(self._run(bad))
+        self.assertIn("INVALID", blob)
+
+    def test_reintroduced_source_kind_is_rejected(self):
+        # `sources[].kind` was removed (ADR 0014); the closed schema rejects it
+        # as an unknown field so a governed concept vocabulary cannot return.
+        bad = _valid_ledger()
+        bad["sources"][0]["kind"] = "framework"
         blob = "\n".join(self._run(bad))
         self.assertIn("INVALID", blob)
 
@@ -1125,6 +1133,23 @@ class SdlValidationGateTest(unittest.TestCase):
         finally:
             CI._load_aces_sdl = orig
         self.assertIn("SDL VALIDATION UNAVAILABLE", "\n".join(failures))
+
+
+class ChallengeCategoryPartitionTest(unittest.TestCase):
+    """The shared `challenges.category.forbidden` code renders in author CI."""
+
+    def test_challenge_code_is_partitioned_as_challenge_failure(self):
+        g: list[str] = []
+        m: list[str] = []
+        p: list[str] = []
+        s: list[str] = []
+        CI._partition_author_static_error(
+            "testpack",
+            "challenges.category.forbidden: "
+            "challenges/challenges.yaml:challenges[0].category",
+            g, m, p, s)
+        self.assertEqual((m, p, s), ([], [], []))
+        self.assertTrue(any("CHALLENGE INVALID" in line for line in g), g)
 
 
 if __name__ == "__main__":

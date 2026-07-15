@@ -43,6 +43,7 @@ _RESOURCES = Path(__file__).with_name("resources")
 _PROVENANCE_SCHEMA = _RESOURCES / "schemas" / "provenance.schema.yaml"
 _COMPATIBILITY_SCHEMA = _RESOURCES / "schemas" / "pack-compatibility.schema.yaml"
 _PACK_MANIFEST = "pack.yaml"
+_CHALLENGES_FILE = "challenges/challenges.yaml"
 _FILESYSTEM_CHANGED = "filesystem.changed"
 
 
@@ -499,6 +500,38 @@ def _validate_compatibility(
     )
 
 
+def _validate_challenges(
+    root_fd: int,
+    inventory: frozenset[str],
+    limits: PackValidationLimits,
+    errors: _Errors,
+) -> None:
+    """Reject the removed pack-domain ``challenges[].category`` field.
+
+    Challenge presentation grouping is an adapter-local (CTFd) concern, not pack
+    semantics; a scenario's tactic/technique classification lives in ACES SDL
+    behaviour specifications, governed by ACES concept-authority, never a pack
+    field (ADR 0014). The guard fires only on the exact structured path
+    ``challenges[].category`` and never scans prose.
+    """
+
+    if _CHALLENGES_FILE not in inventory:
+        return
+    document = _load_yaml_member(root_fd, _CHALLENGES_FILE, limits, errors)
+    if not isinstance(document, dict):
+        return
+    challenges = document.get("challenges")
+    if not isinstance(challenges, list):
+        return
+    for index, entry in enumerate(challenges):
+        if isinstance(entry, dict) and "category" in entry:
+            errors.add(
+                "challenges.category.forbidden",
+                _CHALLENGES_FILE,
+                f"challenges[{index}].category",
+            )
+
+
 def _open_validation_root(
     pack_root: str | os.PathLike[str], errors: _Errors
 ) -> tuple[str, int] | None:
@@ -655,6 +688,7 @@ def _validate_pack_core(
         try:
             inventory = _safe_inventory(root_fd, active, errors)
             if inventory is not None:
+                _validate_challenges(root_fd, inventory, active, errors)
                 pack = _load_pack_manifest(root_fd, inventory, root, active, errors)
                 if pack is not None:
                     _validate_provenance(root_fd, inventory, pack, active, errors)

@@ -1,6 +1,6 @@
 # Scenario pack convention
 
-**Scenario-pack contract version:** `2`
+**Scenario-pack contract version:** `3`
 
 This document is the authoritative layout convention every ACES scenario pack
 follows. It ships inside the `aces-scenario-packs` package alongside the schemas,
@@ -216,14 +216,34 @@ has one documented status:
 If a pack needs trust expressivity the ACES policy lacks, that gap is raised
 **upstream in ACES**, never worked around with a pack-side extension.
 
+#### Concept-authority alignment (ADR 0014)
+
+ACES also owns the governed **concept** vocabulary — ATT&CK and ATLAS
+offensive-behaviour tactics, UCO concept families, and the controlled
+vocabularies — published under `contracts/concept-authority/`. Those
+classifications have one semantic home: ACES SDL behaviour specifications
+(`behavior_specifications.offensive_behavior_refs` /
+`ai_offensive_behavior_refs`), validated by the pinned `aces_sdl.parse_sdl`. The
+pack format consumes them and restates none of them. Two former local overlaps
+are removed: the provenance ledger carries no `sources[].kind`, and the canonical
+challenge contract carries no `challenges[].category` (see
+[Challenges](#challenges)). The remaining local vocabulary — source licensing /
+attribution / usage, artifact distribution classes, content-safety exclusions,
+publication-review gates, overlay containment, and challenge display text — is
+genuinely pack-domain packaging vocabulary, not an ACES concept surface. See
+[ADR 0014](../../../docs/decisions/adrs/0014-consume-aces-concept-authority.md).
+
 The ledger has four parts:
 
 - **`sources[]`** — every upstream corpus, framework, tool, dataset, research
   report, original design, generated material, or customer overlay as a
-  first-class row with a stable `source_id`, `kind`, `license`, `usage`,
+  first-class row with a stable `source_id`, `license`, `usage`,
   `attribution_required` (+ `attribution` text when true), and what was `used` /
   `excluded`. Covers MITRE CTID, AEL, ATT&CK, Atomic Red Team, CALDERA,
-  scenario-specific research, original design, and generated material.
+  scenario-specific research, original design, and generated material. A row
+  records only content origin, licensing, attribution, and usage; it carries no
+  `kind` (or other) concept classification — governed ATT&CK/ATLAS/UCO concept
+  vocabulary lives in ACES concept-authority and ACES SDL, not here (ADR 0014).
 - **`artifacts[]`** — pack-relative roots classified for **distribution**:
   `open`, `redistributable`, `internal-only`, `commercial-only`, `generated`,
   or `customer-specific`. This is the "open vs ACES-only" axis and is
@@ -542,7 +562,6 @@ keyed by the same `flag_id` as the placement map. One entry per flag.
 challenges:
   - flag_id: boreas-mail-creds        # joins to flags/placement.yaml
     title: "Mind the Mailbox"
-    category: corporate
     difficulty: easy                  # easy | medium | hard | insane
     points: 100
     question: "Frost left himself a note. What does PEN{...} say?"
@@ -552,9 +571,15 @@ challenges:
 ```
 
 Keep the contract minimal and let the loader own presentation: `ctfd/` maps
-these fields onto CTFd's own challenge / hint / scoring model. Long prose hints
-or per-flag write-ups may live in their own files under `challenges/` and be
-referenced from the entry; the YAML index stays the canonical list.
+these fields onto CTFd's own challenge / hint / scoring model. Challenge grouping
+such as a CTFd *category* is adapter-local presentation, not part of the
+canonical challenge contract: define it in the loader's own configuration. It is
+never promoted to an ATT&CK/ATLAS classification or copied back into the pack
+challenge shape — governed tactic/technique classification lives in ACES SDL, not
+a pack field ([ADR 0014](../../../docs/decisions/adrs/0014-consume-aces-concept-authority.md)).
+Long prose hints or per-flag write-ups may live in their own files under
+`challenges/` and be referenced from the entry; the YAML index stays the
+canonical list.
 
 ## Build, release & versioning
 

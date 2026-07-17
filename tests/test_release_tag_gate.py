@@ -110,12 +110,14 @@ class ManifestTests(unittest.TestCase):
             gate.validate_manifest(text, "2.0.1")
 
     def test_missing_root_key_raises(self) -> None:
+        text = json.dumps({"pkg": "2.0.1"})
         with self.assertRaises(gate.GateError):
-            gate.validate_manifest(json.dumps({"pkg": "2.0.1"}), "2.0.1")
+            gate.validate_manifest(text, "2.0.1")
 
     def test_version_mismatch_raises(self) -> None:
+        text = _manifest("2.0.0")
         with self.assertRaises(gate.GateError):
-            gate.validate_manifest(_manifest("2.0.0"), "2.0.1")
+            gate.validate_manifest(text, "2.0.1")
 
     def test_invalid_json_raises(self) -> None:
         with self.assertRaises(gate.GateError):
@@ -162,16 +164,14 @@ class DetectReleaseTests(unittest.TestCase):
         self.assertFalse(decision.release)
 
     def test_changed_to_non_semver_fails_closed(self) -> None:
+        before, after, manifest = _pyproject("2.0.1"), _pyproject("2.1"), _manifest("2.1")
         with self.assertRaises(gate.GateError):
-            gate.detect_release(
-                _pyproject("2.0.1"), _pyproject("2.1"), _manifest("2.1")
-            )
+            gate.detect_release(before, after, manifest)
 
     def test_changed_with_manifest_mismatch_fails_closed(self) -> None:
+        before, after, manifest = _pyproject("2.0.1"), _pyproject("2.1.0"), _manifest("9.9.9")
         with self.assertRaises(gate.GateError):
-            gate.detect_release(
-                _pyproject("2.0.1"), _pyproject("2.1.0"), _manifest("9.9.9")
-            )
+            gate.detect_release(before, after, manifest)
 
 
 class ExtractReleaseNotesTests(unittest.TestCase):

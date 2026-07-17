@@ -517,6 +517,39 @@ def _is_restricted_boundary(group: str, row: dict[str, object]) -> bool:
     )
 
 
+def _restricted_boundary_keys(boundaries: dict[str, object]) -> set[tuple[str, ...]]:
+    """Path keys of every restricted (operator/oracle/private) boundary root."""
+
+    keys: set[tuple[str, ...]] = set()
+    for group, rows in boundaries.items():
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if isinstance(row, dict) and _is_restricted_boundary(group, row):
+                key = _boundary_path_key(row.get("path"))
+                if key is not None:
+                    keys.add(key)
+    return keys
+
+
+def _key_overlaps_restricted(
+    key: tuple[str, ...],
+    restricted: set[tuple[str, ...]],
+    restricted_prefixes: set[tuple[str, ...]],
+) -> bool:
+    """Whether a participant key equals, contains, or sits under a restricted root.
+
+    ``key in restricted`` is an identical path; ``key in restricted_prefixes``
+    means the participant path is an ancestor of (contains) a restricted root; a
+    restricted root among the participant key's own prefixes means it sits under
+    one. Any of the three would stage a restricted root into a participant export.
+    """
+
+    if key in restricted or key in restricted_prefixes:
+        return True
+    return any(key[:cut] in restricted for cut in range(1, len(key)))
+
+
 def _boundary_overlaps(boundaries: object) -> list[str]:
     """Return participant field paths that overlap a restricted root.
 
@@ -525,44 +558,25 @@ def _boundary_overlaps(boundaries: object) -> list[str]:
     declaration's field location, which is participant-visible by definition.
     Restricted roots are pre-hashed so the scan is linear in total path
     components, not a participant×restricted Cartesian product on an adversarial
-    manifest. Equal paths and containment in either direction all count, because
-    each would stage a restricted root into a participant export.
+    manifest.
     """
 
     if not isinstance(boundaries, dict):
         return []
-    restricted: set[tuple[str, ...]] = set()
-    for group, rows in boundaries.items():
-        if not isinstance(rows, list):
-            continue
-        for row in rows:
-            if isinstance(row, dict) and _is_restricted_boundary(group, row):
-                key = _boundary_path_key(row.get("path"))
-                if key is not None:
-                    restricted.add(key)
-    if not restricted:
-        return []
-    # Proper prefixes of every restricted root: a participant key equal to one
-    # of these is an ancestor of (i.e. contains) that restricted root.
+    restricted = _restricted_boundary_keys(boundaries)
     restricted_prefixes = {
         key[:cut] for key in restricted for cut in range(1, len(key))
     }
     participant_rows = boundaries.get(_PARTICIPANT_BOUNDARY_GROUP)
-    if not isinstance(participant_rows, list):
-        return []
+    rows = participant_rows if isinstance(participant_rows, list) else []
     overlaps: list[str] = []
-    for index, row in enumerate(participant_rows):
+    for index, row in enumerate(rows):
         if not isinstance(row, dict):
             continue
         key = _boundary_path_key(row.get("path"))
-        if key is None:
-            continue
-        overlaps_restricted = (
-            key in restricted  # identical path
-            or key in restricted_prefixes  # participant contains a restricted root
-            or any(key[:cut] in restricted for cut in range(1, len(key)))  # sits under one
-        )
-        if overlaps_restricted:
+        if key is not None and _key_overlaps_restricted(
+            key, restricted, restricted_prefixes
+        ):
             overlaps.append(
                 f"artifact_boundaries.{_PARTICIPANT_BOUNDARY_GROUP}[{index}].path"
             )

@@ -58,6 +58,7 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 # content_ci is a sibling module, imported after the sys.path insert above.
 import content_ci as cc
+from aces_scenario_packs import validation
 
 REPO = cc._REPO
 SCEN = cc.SCEN
@@ -431,6 +432,17 @@ def build_release(pack_root: str, out_dir: str, *,
     os.makedirs(staging)
     try:
         boundaries = (pc.compatibility or {}).get("artifact_boundaries")
+        # Reject a participant/restricted boundary overlap before copying any
+        # row (ADR 0013): release must be independently safe even if the shared
+        # validation gate did not run first. The participant leak scan below is
+        # defense-in-depth, not the declaration boundary.
+        overlap_fields = validation._boundary_overlaps(boundaries)
+        if overlap_fields:
+            failures += [
+                f"{pc.name}: artifact boundary {field} overlaps an "
+                "operator/oracle/private root; refusing to stage a participant export"
+                for field in overlap_fields]
+            return metadata, failures
         failures += _stage_boundaries(pc, pack_root, boundaries, staging, tier_stats)
         # The participant tier is the one surface that must never carry an operator
         # token; re-run the redacted leak scan over the *staged* artifact.

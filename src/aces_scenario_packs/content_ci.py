@@ -982,74 +982,6 @@ def _path_is_parent(parent: str, child: str) -> bool:
     return child_norm.startswith(parent_norm + os.sep)
 
 
-BOUNDARY_GROUPS = ("oracle_only", "participant_visible", "operator_only", "commercial")
-EXPOSED_BOUNDARY_GROUPS = ("participant_visible", "operator_only", "commercial")
-PRIVATE_BOUNDARY_EXPORTS = {"oracle", "private"}
-
-
-def _iter_boundary_rows(boundaries: dict[str, object], group: str) -> Iterator[dict[str, object]]:
-    """Iter boundary rows."""
-    rows = boundaries.get(group, [])
-    if not isinstance(rows, list):
-        return
-    for row in rows:
-        if isinstance(row, dict):
-            yield row
-
-
-def _boundary_path(row: dict[str, object]) -> str | None:
-    """Boundary path."""
-    path = row.get("path")
-    return path if isinstance(path, str) else None
-
-
-def _is_private_boundary(group: str, row: dict[str, object]) -> bool:
-    """Is private boundary."""
-    return group == "oracle_only" or row.get("export") in PRIVATE_BOUNDARY_EXPORTS
-
-
-def _private_boundary_paths(boundaries: dict[str, object]) -> list[str]:
-    """Private boundary paths."""
-    private_paths: list[str] = []
-    for group in BOUNDARY_GROUPS:
-        for row in _iter_boundary_rows(boundaries, group):
-            path = _boundary_path(row)
-            if path is not None and _is_private_boundary(group, row):
-                private_paths.append(path)
-    return private_paths
-
-
-def _iter_exposed_boundary_paths(boundaries: dict[str, object]) -> Iterator[tuple[str, str]]:
-    """Iter exposed boundary paths."""
-    for group in EXPOSED_BOUNDARY_GROUPS:
-        for row in _iter_boundary_rows(boundaries, group):
-            path = _boundary_path(row)
-            if path is not None and not _is_private_boundary(group, row):
-                yield group, path
-
-
-def _record_boundary_overlap(failures: list[str], pack: str, group: str,
-                             exposed_path: str, private_path: str) -> None:
-    """Record boundary overlap."""
-    failures.append(
-        f"compatibility manifest INVALID: {pack}: {group} path "
-        f"{exposed_path} contains oracle/private path {private_path}")
-
-
-def _check_boundary_overlaps(manifest: dict[str, object], failures: list[str],
-                             pack: str) -> None:
-    """Check boundary overlaps."""
-    boundaries = manifest.get("artifact_boundaries")
-    if not isinstance(boundaries, dict):
-        return
-    private_paths = _private_boundary_paths(boundaries)
-    for group, exposed_path in _iter_exposed_boundary_paths(boundaries):
-        for private_path in private_paths:
-            if _path_is_parent(exposed_path, private_path):
-                _record_boundary_overlap(failures, pack, group, exposed_path,
-                                         private_path)
-
-
 def _check_duplicate_ids(manifest: dict[str, object], failures: list[str], pack: str) -> None:
     """Check duplicate ids."""
     checks = [
@@ -1121,7 +1053,9 @@ def _validate_compatibility_manifest(
             f"{PACK_MANIFEST_FILE}={pack_name!r} compatibility={manifest_name!r}")
 
     _check_duplicate_ids(manifest, failures, pack)
-    _check_boundary_overlaps(manifest, failures, pack)
+    # Participant/restricted boundary-overlap is now a shared static invariant in
+    # validation.py, surfaced through _author_static_view (ADR 0013); do not
+    # re-check it here — the CLI must not retain a second copy of a shared check.
     for field_path, rel_path in _iter_path_fields(manifest):
         if not _path_inside_pack(pack_root, rel_path):
             failures.append(

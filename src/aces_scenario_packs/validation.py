@@ -476,6 +476,99 @@ def _validate_provenance(
     _validate_provenance_review(ledger, rel, errors)
 
 
+# Visibility-boundary overlap is a relational ingest invariant JSON Schema cannot
+# express (ADR 0013): every participant_visible path must be disjoint from every
+# restricted non-participant root, so hidden-tier content cannot be declared into
+# a participant export. Restricted roots are the operator_only and oracle_only
+# groups, plus any row exported as operator/oracle/private.
+_PARTICIPANT_BOUNDARY_GROUP = "participant_visible"
+_RESTRICTED_BOUNDARY_GROUPS = frozenset({"operator_only", "oracle_only"})
+_RESTRICTED_BOUNDARY_EXPORTS = frozenset({"operator", "oracle", "private"})
+
+
+def _boundary_path_key(path: object) -> tuple[str, ...] | None:
+    """Return canonical path components of a boundary path, or None.
+
+    ``docs`` and ``docs/`` yield the same key; ``.`` and empty segments are
+    dropped. Empty, root, or parent-escaping paths return ``None`` — those are
+    handled by the schema and path-containment gates, not this relational check.
+    Comparison is component-wise, so ``docs`` contains ``docs/x`` but not
+    ``docs2``. Both ``/`` and ``\\`` split into components: canonical manifest
+    paths are forward-slash only (``_pack_fs.normalize_relpath`` rejects a
+    backslash), but a Windows filesystem treats ``\\`` as a separator, so a
+    row like ``docs\\secret.yaml`` must fail closed as a descendant of ``docs``
+    rather than be read as one opaque component.
+    """
+
+    if not isinstance(path, str):
+        return None
+    parts = tuple(part for part in re.split(r"[\\/]+", path) if part not in ("", "."))
+    if not parts or ".." in parts:
+        return None
+    return parts
+
+
+def _is_restricted_boundary(group: str, row: dict[str, object]) -> bool:
+    """Whether one boundary row is a restricted (operator/oracle/private) root."""
+
+    return (
+        group in _RESTRICTED_BOUNDARY_GROUPS
+        or row.get("export") in _RESTRICTED_BOUNDARY_EXPORTS
+    )
+
+
+def _boundary_overlaps(boundaries: object) -> list[str]:
+    """Return participant field paths that overlap a restricted root.
+
+    Pure and malformed-tolerant: no filesystem access, no exceptions on bad
+    rows, and never a restricted (hidden) path value — only the participant
+    declaration's field location, which is participant-visible by definition.
+    Restricted roots are pre-hashed so the scan is linear in total path
+    components, not a participant×restricted Cartesian product on an adversarial
+    manifest. Equal paths and containment in either direction all count, because
+    each would stage a restricted root into a participant export.
+    """
+
+    if not isinstance(boundaries, dict):
+        return []
+    restricted: set[tuple[str, ...]] = set()
+    for group, rows in boundaries.items():
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if isinstance(row, dict) and _is_restricted_boundary(group, row):
+                key = _boundary_path_key(row.get("path"))
+                if key is not None:
+                    restricted.add(key)
+    if not restricted:
+        return []
+    # Proper prefixes of every restricted root: a participant key equal to one
+    # of these is an ancestor of (i.e. contains) that restricted root.
+    restricted_prefixes = {
+        key[:cut] for key in restricted for cut in range(1, len(key))
+    }
+    participant_rows = boundaries.get(_PARTICIPANT_BOUNDARY_GROUP)
+    if not isinstance(participant_rows, list):
+        return []
+    overlaps: list[str] = []
+    for index, row in enumerate(participant_rows):
+        if not isinstance(row, dict):
+            continue
+        key = _boundary_path_key(row.get("path"))
+        if key is None:
+            continue
+        overlaps_restricted = (
+            key in restricted  # identical path
+            or key in restricted_prefixes  # participant contains a restricted root
+            or any(key[:cut] in restricted for cut in range(1, len(key)))  # sits under one
+        )
+        if overlaps_restricted:
+            overlaps.append(
+                f"artifact_boundaries.{_PARTICIPANT_BOUNDARY_GROUP}[{index}].path"
+            )
+    return overlaps
+
+
 def _validate_compatibility(
     root_fd: int,
     inventory: frozenset[str],
@@ -498,6 +591,8 @@ def _validate_compatibility(
     _add_schema_violations(
         errors, "compatibility", rel, manifest, _trusted_schema(_COMPATIBILITY_SCHEMA)
     )
+    for field_path in _boundary_overlaps(manifest.get("artifact_boundaries")):
+        errors.add("compatibility.boundary-overlap", rel, field_path)
 
 
 def _validate_challenges(

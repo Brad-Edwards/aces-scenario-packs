@@ -54,7 +54,8 @@ jobs:
 
       - name: Build sdist + wheel
         run: |
-          python -m pip install --upgrade build
+          # Pin build tooling for reproducible, tamper-resistant releases (#60).
+          python -m pip install build==1.5.0
           python -m build --outdir dist
 
       # ADR 0015: attest SLSA build provenance for the exact wheel + sdist just
@@ -73,7 +74,8 @@ jobs:
       - name: Generate CycloneDX SBOM
         run: |
           set -euo pipefail
-          python -m pip install dist/*.whl cyclonedx-bom
+          # dist/*.whl is the just-built package; pin the SBOM generator (#60).
+          python -m pip install dist/*.whl cyclonedx-bom==7.3.0
           mkdir -p sbom
           cyclonedx-py environment \
             --output-format JSON \

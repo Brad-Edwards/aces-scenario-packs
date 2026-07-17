@@ -685,27 +685,20 @@ class CompatibilityManifestGateTest(unittest.TestCase):
 
         self.assertIn("path escapes pack root", "\n".join(failures))
 
-    def test_compatibility_manifest_rejects_export_parent_of_oracle_path(self):
+    def test_compatibility_manifest_rejects_participant_restricted_overlap(self):
+        # A path declared in both a participant/public group and an
+        # operator/oracle/private group is rejected (issue #112). Here the
+        # participant-visible README.md is also declared as a private oracle
+        # root, so hidden-tier content would land in a participant export.
         body = self._valid_manifest().replace(
-            "  operator_only: []",
-            "\n".join([
-                "  operator_only:",
-                "    - path: docs/",
-                "      export: commercial",
-            ]),
-        ).replace(
             "  oracle_only: []",
             "\n".join([
                 "  oracle_only:",
-                "    - path: docs/oracle-map.md",
+                "    - path: README.md",
                 "      export: private",
             ]),
         )
         tmp, scen = self._with_manifest_pack(body)
-        docs = os.path.join(scen, "example-pack", "docs")
-        os.makedirs(docs, exist_ok=True)
-        with open(os.path.join(docs, "oracle-map.md"), "w", encoding="utf-8") as fh:
-            fh.write("hidden proof\n")
         orig_scen, orig_repo = CI.SCEN, CI._REPO
         CI.SCEN, CI._REPO = scen, tmp
         try:
@@ -714,7 +707,7 @@ class CompatibilityManifestGateTest(unittest.TestCase):
         finally:
             CI.SCEN, CI._REPO = orig_scen, orig_repo
 
-        self.assertIn("contains oracle/private path", "\n".join(failures))
+        self.assertIn("compatibility.boundary-overlap", "\n".join(failures))
 
     def test_template_example_validates_against_schema(self):
         failures: list[str] = []

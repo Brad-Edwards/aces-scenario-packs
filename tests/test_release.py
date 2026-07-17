@@ -179,6 +179,21 @@ class BuildTests(unittest.TestCase):
             self.assertTrue(any("escape" in f.lower() or "contain" in f.lower()
                                 for f in failures))
 
+    def test_build_rejects_participant_restricted_boundary_overlap(self):
+        # A participant root that contains a restricted operator root must be
+        # rejected before any boundary row is copied (issue #112, ADR 0013).
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as out:
+            _make_pack(tmp, profile_bundles=False, delivery_bundles=[], boundaries={
+                "participant_visible": [{"path": "docs/", "export": "public"}],
+                "operator_only": [{"path": "docs/runbook.md", "export": "operator"}],
+                "oracle_only": [], "commercial": []})
+            _, failures = PR.build_release(tmp, out)
+            self.assertTrue(
+                any("overlaps an operator/oracle/private root" in f for f in failures),
+                failures)
+            # Rejected before staging: no release tree or scratch dir remains.
+            self.assertEqual(os.listdir(out), [])
+
     def test_failed_build_leaves_no_release_root(self):
         # A failing build must not leave a partial/half-built release tree behind.
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as out:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import pathlib
+import re
 import tomllib
 import unittest
 
@@ -21,14 +22,36 @@ class VersionTests(unittest.TestCase):
 
 
 class AcesDependencyTests(unittest.TestCase):
-    def test_aces_sdl_is_exactly_pinned_to_0_21_0(self):
+    def test_aces_sdl_is_exactly_pinned(self):
+        """ADR 0011: aces-sdl is a single, exactly (``==``) pinned runtime dep.
+
+        The concrete version is deliberately NOT asserted here. A Dependabot
+        bump edits only ``pyproject.toml``; asserting the literal version would
+        turn every bump into a manual test edit and block auto-merge (ADR 0016).
+        This guards the *invariant* — exactly one ``aces-sdl`` requirement,
+        pinned with ``==`` — while the version itself advances through the
+        reviewed pin (ADR 0011) and the CI compatibility gate.
+        """
         root = pathlib.Path(__file__).resolve().parents[1]
         with (root / "pyproject.toml").open("rb") as handle:
             dependencies = tomllib.load(handle)["project"]["dependencies"]
 
-        self.assertIn("aces-sdl==0.21.0", dependencies)
-        self.assertFalse(any(dep.startswith("aces-sdl") and dep != "aces-sdl==0.21.0"
-                             for dep in dependencies))
+        aces_specs = [dep for dep in dependencies
+                      if re.match(r"aces-sdl(?![\w-])", dep.strip())]
+        self.assertEqual(
+            len(aces_specs), 1,
+            f"expected exactly one aces-sdl requirement, got {aces_specs}")
+
+        spec = aces_specs[0].replace(" ", "")
+        self.assertTrue(
+            spec.startswith("aces-sdl=="),
+            f"aces-sdl must be exactly (==) pinned per ADR 0011, got {spec!r}")
+        self.assertNotRegex(
+            spec, r"[<>~!,]",
+            f"aces-sdl must be a single exact pin, no ranges (ADR 0011), got {spec!r}")
+        self.assertRegex(
+            spec[len("aces-sdl=="):], r"^\d+(\.\d+)+",
+            f"aces-sdl pin must carry a concrete version, got {spec!r}")
 
     def test_bespoke_oracle_package_surface_is_absent(self):
         package_root = pathlib.Path(aces_scenario_packs.__file__).resolve().parent

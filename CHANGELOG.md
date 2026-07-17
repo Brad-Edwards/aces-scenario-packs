@@ -11,6 +11,13 @@ this file at release-prep. See [`changelog.d/README.md`](changelog.d/README.md).
 
 <!-- towncrier release notes start -->
 
+## [2.0.1](https://github.com/Brad-Edwards/aces-scenario-packs/compare/v2.0.0...v2.0.1) (2026-07-17)
+
+
+### Bug Fixes
+
+* **deps:** bump aces-sdl from 0.21.0 to 0.23.0 ([#123](https://github.com/Brad-Edwards/aces-scenario-packs/issues/123)) ([db7035d](https://github.com/Brad-Edwards/aces-scenario-packs/commit/db7035d190cabe4b847c0e888ebcaddde8da262d))
+
 ## [2.0.0](https://github.com/Brad-Edwards/aces-scenario-packs/compare/v1.2.0...v2.0.0) (2026-07-15)
 
 

@@ -4,7 +4,8 @@
   "packages": {
     ".": {
       "release-type": "python",
-      "package-name": "aces-scenario-packs"
+      "package-name": "aces-scenario-packs",
+      "skip-github-release": true
     }
   }
 }

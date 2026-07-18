@@ -1,10 +1,15 @@
 name: Release Please
 
-# Release automation (ADR 0008). release-please maintains a release PR
-# ("chore(main): release X.Y.Z") that bumps [project].version and CHANGELOG.md
-# from the Conventional Commit history. Merging that PR creates the tag + GitHub
-# Release; this workflow then builds, generates the SBOM, and publishes to PyPI
-# via OIDC. Nothing is hand-run and feature PRs never edit CHANGELOG.md.
+# Release automation (ADR 0008 + ADR 0017). Release Please runs in PR-only mode
+# (skip-github-release: true in release-please-config.json): it maintains the
+# "chore(main): release X.Y.Z" PR that bumps [project].version and CHANGELOG.md
+# from the Conventional Commit history, but it never creates the tag or GitHub
+# Release. Merging that PR to main is the release act; this workflow then detects
+# the Release Please-owned version transition, creates a keyless-Sigstore-signed
+# annotated tag, verifies it against the exact workflow identity, and only then
+# builds, attests (ADR 0015), generates the SBOM (ADR 0004), publishes to PyPI
+# via OIDC, and cuts the GitHub Release. No signing key is stored; nothing is
+# hand-run; feature PRs never edit CHANGELOG.md.
 #
 # The release PR is opened by GITHUB_TOKEN, so required CI checks don't auto-run
 # on it — admin-merge it (or give release-please a PAT so its checks run).
@@ -13,44 +18,202 @@ on:
     branches:
       - main
 
-permissions:
-  contents: write
-  pull-requests: write
+# The canonical signer trust policy, declared once (ADR 0017). Referenced by the
+# verification step; the ADR and SECURITY.md document the same values.
+env:
+  CERT_IDENTITY: https://github.com/Brad-Edwards/aces-scenario-packs/.github/workflows/release-please.yml@refs/heads/main
+  CERT_OIDC_ISSUER: https://token.actions.githubusercontent.com
+  GITSIGN_VERSION_FLOOR: "0.15.0"
+
+# Serialize releases so two runs cannot race to create or publish the same tag.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release-please:
     name: Maintain release PR
     runs-on: ubuntu-latest
-    outputs:
-      release_created: ${{ steps.rp.outputs.release_created }}
-      tag_name: ${{ steps.rp.outputs.tag_name }}
+    # PR-writing privilege only; no OIDC or attestation (ADR 0017 least-privilege).
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
-      - name: Run release-please
-        id: rp
+      - name: Run release-please (PR-only mode)
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  publish:
-    name: Build, SBOM, and publish to PyPI
-    needs: [release-please]
-    if: needs.release-please.outputs.release_created == 'true'
+  detect-release:
+    name: Detect authorized release
     runs-on: ubuntu-latest
-    environment: pypi
+    # Read-only: inspect the merged PR + the version transition on the push.
     permissions:
-      contents: write       # attach artifacts to the GitHub Release
-      id-token: write       # OIDC trusted publishing to PyPI + Sigstore signing identity
-      attestations: write   # sign SLSA build provenance for the dist artifacts (ADR 0015)
+      contents: read
+      pull-requests: read
+    outputs:
+      release: ${{ steps.gate.outputs.release }}
+      tag: ${{ steps.gate.outputs.tag }}
+      version: ${{ steps.gate.outputs.version }}
+      pr: ${{ steps.pr.outputs.number }}
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
+
+      # Resolve the pull request whose merge produced this push. Only Release
+      # Please applies "autorelease: pending" to its own release PRs, so the
+      # merged PR's labels are the authenticated release signal the gate requires
+      # (ADR 0017). github.sha is read by jq from the environment (env.GITHUB_SHA),
+      # never interpolated into the jq program or a shell command.
+      - name: Resolve the merged pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          api="repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls"
+          gh api "${api}" \
+            --jq '[.[] | select(.merge_commit_sha == env.GITHUB_SHA) | .labels[].name] | .[]' \
+            > pr-labels.txt || true
+          number="$(gh api "${api}" \
+            --jq 'map(select(.merge_commit_sha == env.GITHUB_SHA)) | (.[0].number // "" | tostring)' \
+            || true)"
+          echo "number=${number}" >> "${GITHUB_OUTPUT}"
+
+      # The gate authorizes on the release-PR label first, then parses
+      # pyproject.toml + the manifest with real parsers as a consistency check,
+      # validating strict SemVer + manifest agreement and failing closed on a
+      # malformed transition (tools/release_tag_gate.py, guarded by unit tests).
+      - name: Detect authorized release
+        id: gate
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          python tools/release_tag_gate.py check \
+            --before "${BEFORE_SHA}" \
+            --after "${AFTER_SHA}" \
+            --merged-pr-labels-file pr-labels.txt \
+            --github-output "${GITHUB_OUTPUT}"
+
+  publish:
+    name: Sign tag, build, attest, SBOM, and publish
+    needs: [detect-release]
+    if: needs.detect-release.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: write        # push the signed tag + create/attach the Release
+      id-token: write        # OIDC: gitsign signing identity + PyPI trusted publishing + attestation
+      attestations: write    # sign SLSA build provenance for the dist artifacts (ADR 0015)
+      pull-requests: write   # relabel the release PR autorelease: pending -> tagged
+    env:
+      TAG: ${{ needs.detect-release.outputs.tag }}
+      VERSION: ${{ needs.detect-release.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      # SHA-pinned like every third-party action (Dependabot keeps it fresh);
+      # this pin installs gitsign 0.16.1 with a verified checksum and configures
+      # git for x509/Sigstore tag signing.
+      - name: Install and configure gitsign
+        uses: chainguard-dev/actions/setup-gitsign@4d37df0d85a91f619edc34a8803323033cdcb124 # v1.6.27
+
+      # Defence in depth against CVE-2026-44310 (a verify-bypass fixed in 0.15.0):
+      # fail closed if the installed gitsign is below the floor, regardless of how
+      # it was installed.
+      - name: Enforce gitsign version floor
+        run: |
+          set -euo pipefail
+          installed="$(gitsign version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)"
+          if [ -z "${installed}" ]; then
+            echo "Could not determine the installed gitsign version." >&2
+            exit 1
+          fi
+          lowest="$(printf '%s\n%s\n' "${installed}" "${GITSIGN_VERSION_FLOOR}" | sort -V | head -n1)"
+          if [ "${lowest}" != "${GITSIGN_VERSION_FLOOR}" ]; then
+            echo "gitsign ${installed} is below the required floor ${GITSIGN_VERSION_FLOOR} (CVE-2026-44310)." >&2
+            exit 1
+          fi
+          echo "gitsign ${installed} satisfies the >= ${GITSIGN_VERSION_FLOOR} floor."
+
+      # Create ONE signed annotated tag at the exact release commit, verify its
+      # signature AND signer identity, and only then push it. Verification runs
+      # before the tag is published and before any build/publish step, so an
+      # unverifiable tag is never pushed (ADR 0017). A rerun reuses an existing
+      # remote tag only when it dereferences to this commit and passes the same
+      # identity policy; any other existing tag fails closed. Tags are never
+      # deleted or force-updated. Auth for the push flows through the gh
+      # credential helper (GH_TOKEN in env), never a remote URL or process arg.
+      - name: Create, verify, and push the signed tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config gpg.x509.program gitsign
+          git config gpg.format x509
+
+          verify_tag() {
+            gitsign verify-tag \
+              --certificate-identity="${CERT_IDENTITY}" \
+              --certificate-oidc-issuer="${CERT_OIDC_ISSUER}" \
+              "${TAG}"
+          }
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists on origin; validating for rerun."
+            git fetch --no-tags origin "refs/tags/${TAG}:refs/tags/${TAG}"
+            target="$(git rev-list -n 1 "${TAG}")"
+            if [ "${target}" != "${GITHUB_SHA}" ]; then
+              echo "Existing tag ${TAG} points at ${target}, not ${GITHUB_SHA}; refusing." >&2
+              exit 1
+            fi
+            verify_tag
+            echo "Reusing existing verified tag ${TAG}."
+          else
+            git tag -s "${TAG}" "${GITHUB_SHA}" -m "Release ${TAG}"
+            verify_tag
+            gh auth setup-git
+            git push origin "refs/tags/${TAG}"
+          fi
+
+      # Complete Release Please's state machine. With skip-github-release it does
+      # not tag, so it leaves the merged release PR labeled "autorelease: pending"
+      # and aborts the next run (googleapis/release-please#1561). Now that the
+      # signed tag exists, flip it to "autorelease: tagged". Done here — after the
+      # tag exists but before PyPI publication — so a failure is recoverable by
+      # rerun rather than stranding a published-but-untagged state. Idempotent:
+      # adding an existing label is a no-op, and removing an absent one is tolerated.
+      - name: Mark the release PR tagged
+        if: needs.detect-release.outputs.pr != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ needs.detect-release.outputs.pr }}
+        run: |
+          set -euo pipefail
+          gh pr edit "${PR}" --add-label "autorelease: tagged"
+          gh pr edit "${PR}" --remove-label "autorelease: pending" 2>/dev/null || true
 
       - name: Build sdist + wheel
         run: |
@@ -59,11 +222,8 @@ jobs:
           python -m build --outdir dist
 
       # ADR 0015: attest SLSA build provenance for the exact wheel + sdist just
-      # built, before either publication destination (PyPI, GitHub Release), so
-      # each artifact verifies with `gh attestation verify`. A failure here is
-      # release-blocking — an unattested artifact is never knowingly published.
-      # Uses the job's id-token: write for a short-lived Sigstore signing
-      # identity; SHA-pinned like every other action (Dependabot keeps it fresh).
+      # built, before any publication (PyPI, GitHub Release), so each artifact
+      # verifies with `gh attestation verify`. Release-blocking on failure.
       - name: Attest build provenance for wheel + sdist
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
@@ -81,6 +241,32 @@ jobs:
             --output-format JSON \
             --output-file sbom/aces-scenario-packs.cdx.json
 
+      # Release notes come from the Release Please-owned CHANGELOG.md section for
+      # this version, passed to gh by file (never interpolated into a command).
+      - name: Extract release notes
+        run: |
+          python tools/release_tag_gate.py notes \
+            --version "${VERSION}" \
+            --changelog CHANGELOG.md \
+            --output release-notes.md
+
+      # Idempotent: a rerun after a later publication failure must not abort here
+      # because the Release already exists. Reuse the existing Release for the
+      # already-verified tag, or create it from the signed tag when absent.
+      - name: Create the GitHub Release from the signed tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "GitHub Release ${TAG} already exists; reusing it (rerun-safe)."
+          else
+            gh release create "${TAG}" \
+              --verify-tag \
+              --title "${TAG}" \
+              --notes-file release-notes.md
+          fi
+
       - name: Publish to PyPI (OIDC trusted publishing)
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
         with:
@@ -89,5 +275,4 @@ jobs:
       - name: Attach dist + SBOM to the GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.release-please.outputs.tag_name }}
         run: gh release upload "${TAG}" dist/* sbom/aces-scenario-packs.cdx.json --clobber

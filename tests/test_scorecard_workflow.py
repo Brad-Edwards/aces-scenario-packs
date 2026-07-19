@@ -155,8 +155,11 @@ class ScorecardWorkflowContractTests(unittest.TestCase):
     # --- checkout hardening ---------------------------------------------
     def test_checkout_does_not_persist_credentials(self) -> None:
         with_block = self._step(_CHECKOUT_ACTION).get("with", {})
-        self.assertEqual(with_block.get("persist-credentials"), False,
-                         "checkout must not persist credentials in the Scorecard job")
+        # assertIs (not assertFalse): a missing key returns None, which is falsy
+        # but means GitHub's default of *persisting* credentials — the insecure
+        # case. Require the explicit boolean False, not merely a falsy value.
+        self.assertIs(with_block.get("persist-credentials"), False,
+                      "checkout must not persist credentials in the Scorecard job")
 
     # --- actions: approved set, pinned, ordered -------------------------
     def test_only_approved_actions_used(self) -> None:

@@ -1,0 +1,53 @@
+# GitHub-native CodeQL static analysis (SAST) for this repository's Python
+# tooling. Complements — does not replace — the SonarCloud scan in ci.yml, and
+# fits the repo's supply-chain posture (SHA-pinned actions; ADR 0004 and
+# ADRs 0015–0017). Results are uploaded to the repository Security tab.
+name: CodeQL
+
+on:
+  pull_request:
+    branches:
+      - main
+      - dev
+  schedule:
+    # Weekly, Monday 07:23 UTC. Off the top of the hour: GitHub delays
+    # scheduled runs queued at :00. Scheduled runs analyze the default
+    # branch (main); PR runs analyze the proposed merge into dev/main.
+    - cron: "23 7 * * 1"
+
+# Least privilege: analyze uploads SARIF via GITHUB_TOKEN only.
+permissions:
+  contents: read
+  security-events: write
+
+# Cancel superseded runs on the same ref (e.g. a new push to a PR).
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # build-mode: none — Python needs no build to analyze. Add another
+          # entry here to extend CodeQL to a second language.
+          - language: python
+            build-mode: none
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        with:
+          category: "/language:${{ matrix.language }}"

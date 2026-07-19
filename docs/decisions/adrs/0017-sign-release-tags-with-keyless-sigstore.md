@@ -26,6 +26,37 @@ a short-lived GitHub Actions OIDC identity for trusted publishing and artifact
 attestation, so adding a second long-lived signing identity would move against
 the repository's existing supply-chain model.
 
+### Release Please constraints (why this workflow is custom)
+
+Release Please has no native tag signing and no clean handoff for external
+tagging, so a signed tag cannot be produced without taking tag creation away
+from it:
+
+- It has no signing option of any kind (open, unaddressed feature request
+  [release-please-action#1171](https://github.com/googleapis/release-please-action/issues/1171)),
+  and it creates the tag through the GitHub REST API — so a local signer such as
+  `gitsign` (which hooks `git tag -s`) cannot intercept it. A signed tag
+  therefore requires creating the tag locally, outside Release Please.
+- `skip-github-release: true` is the only lever that stops Release Please from
+  creating the unsigned tag; it suppresses both the tag and the GitHub Release
+  (there is no tag-only mode —
+  [release-please-action#1034](https://github.com/googleapis/release-please-action/issues/1034)),
+  and it leaves the release-PR outputs (`release_created`, `tag_name`) unset, so
+  the downstream job cannot rely on them.
+- Under `skip-github-release`, Release Please does not complete its own
+  `autorelease: pending` → `autorelease: tagged` label transition, and it aborts
+  a later run with "untagged, merged release PRs outstanding"
+  ([release-please#1561](https://github.com/googleapis/release-please/issues/1561),
+  still current — closed only by a documentation change). There is no documented
+  handoff for external tagging.
+
+The design below therefore takes over only tag creation — Release Please keeps
+owning the version, changelog, and release PR — authorizes on the merged PR's
+`autorelease: pending` label instead of the unset outputs, and completes Release
+Please's own label transition so its state machine stays consistent. This is
+unsupported territory in Release Please; the end-to-end path is validated on the
+first real release.
+
 ## Decision
 
 Use **keyless Sigstore signing with gitsign** for release tags.

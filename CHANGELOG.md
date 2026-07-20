@@ -11,6 +11,19 @@ this file at release-prep. See [`changelog.d/README.md`](changelog.d/README.md).
 
 <!-- towncrier release notes start -->
 
+## [2.0.2](https://github.com/Brad-Edwards/aces-scenario-packs/compare/v2.0.1...v2.0.2) (2026-07-20)
+
+
+### Bug Fixes
+
+* **deps:** bump aces-sdl from 0.23.0 to 0.23.1 ([#131](https://github.com/Brad-Edwards/aces-scenario-packs/issues/131)) ([6e65fd7](https://github.com/Brad-Edwards/aces-scenario-packs/commit/6e65fd73a4c879dfd7a4d54a5210ed6052c2a42e))
+* reject participant/restricted artifact-boundary overlaps ([#127](https://github.com/Brad-Edwards/aces-scenario-packs/issues/127)) ([56e0eab](https://github.com/Brad-Edwards/aces-scenario-packs/commit/56e0eabc95eb4a4e09303986d1525ce5ae491f4b))
+
+
+### Documentation
+
+* record release-please signing constraints in ADR 0017 ([#130](https://github.com/Brad-Edwards/aces-scenario-packs/issues/130)) ([d20b5d7](https://github.com/Brad-Edwards/aces-scenario-packs/commit/d20b5d724d03254d94f163e88c083dfda78d090d))
+
 ## [2.0.1](https://github.com/Brad-Edwards/aces-scenario-packs/compare/v2.0.0...v2.0.1) (2026-07-17)
 
 

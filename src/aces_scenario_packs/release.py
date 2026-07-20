@@ -58,6 +58,7 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 # content_ci is a sibling module, imported after the sys.path insert above.
 import content_ci as cc
+from aces_scenario_packs import validation
 
 REPO = cc._REPO
 SCEN = cc.SCEN
@@ -431,14 +432,27 @@ def build_release(pack_root: str, out_dir: str, *,
     os.makedirs(staging)
     try:
         boundaries = (pc.compatibility or {}).get("artifact_boundaries")
-        failures += _stage_boundaries(pc, pack_root, boundaries, staging, tier_stats)
-        # The participant tier is the one surface that must never carry an operator
-        # token; re-run the redacted leak scan over the *staged* artifact.
-        failures += [
-            f"{pc.name}: participant release artifact leaks a {label} at "
-            f"{PARTICIPANT_TIER}/{locator} (match redacted)"
-            for label, locator in scan_tier_for_leaks(
-                os.path.join(staging, PARTICIPANT_TIER))]
+        # Reject a participant/restricted boundary overlap before copying any
+        # row (ADR 0013): release must be independently safe even if the shared
+        # validation gate did not run first. On overlap, skip staging entirely so
+        # no boundary row is copied; the participant leak scan is defense-in-depth,
+        # not the declaration boundary.
+        overlap_fields = validation._boundary_overlaps(boundaries)
+        if overlap_fields:
+            failures += [
+                f"{pc.name}: artifact boundary {field} overlaps an "
+                "operator/oracle/private root; refusing to stage a participant export"
+                for field in overlap_fields]
+        else:
+            failures += _stage_boundaries(pc, pack_root, boundaries, staging, tier_stats)
+            # The participant tier is the one surface that must never carry an
+            # operator token; re-run the redacted leak scan over the *staged*
+            # artifact.
+            failures += [
+                f"{pc.name}: participant release artifact leaks a {label} at "
+                f"{PARTICIPANT_TIER}/{locator} (match redacted)"
+                for label, locator in scan_tier_for_leaks(
+                    os.path.join(staging, PARTICIPANT_TIER))]
         if failures:
             return metadata, failures
 

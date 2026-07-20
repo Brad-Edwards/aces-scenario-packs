@@ -14,6 +14,7 @@ from unittest import mock
 import yaml
 
 from aces_scenario_packs import PackValidationLimits, ValidationResult, validate_pack
+from aces_scenario_packs import validation as _validation
 
 
 _VALID_SDL = "\n".join(
@@ -175,6 +176,199 @@ class CompatibilityValidationTests(PackValidationFixture):
             any(error.startswith("compatibility.schema.required:") for error in errors),
             errors,
         )
+
+    def test_participant_restricted_boundary_overlap_is_rejected_without_leaking(
+        self,
+    ) -> None:
+        manifest = yaml.safe_load(
+            (self.root / "pack.compatibility.yaml").read_text(encoding="utf-8")
+        )
+        # Participant root "docs" is an ancestor of the restricted operator path
+        # docs/golden-readiness-checklist.md shipped in the template manifest.
+        manifest["artifact_boundaries"]["participant_visible"] = [
+            {"path": "docs", "export": "public", "description": "x"},
+        ]
+        (self.root / "pack.compatibility.yaml").write_text(
+            yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8"
+        )
+        result = self.validate()
+        self.assertFalse(result.ok)
+        blob = "\n".join(result.errors)
+        self.assertIn(
+            "compatibility.boundary-overlap: pack.compatibility.yaml:"
+            "artifact_boundaries.participant_visible[0].path",
+            blob,
+        )
+        # The restricted descendant path value must never enter the result.
+        self.assertNotIn("golden-readiness-checklist", blob)
+
+
+class BoundaryOverlapUnitTests(unittest.TestCase):
+    """Pure participant-vs-restricted overlap invariant (issue #112)."""
+
+    def _fields(self, boundaries: object) -> list[str]:
+        return _validation._boundary_overlaps(boundaries)
+
+    def test_equal_path_across_participant_and_oracle_is_flagged(self) -> None:
+        self.assertEqual(
+            self._fields(
+                {
+                    "participant_visible": [{"path": "docs/shared.md", "export": "public"}],
+                    "oracle_only": [{"path": "docs/shared.md", "export": "private"}],
+                }
+            ),
+            ["artifact_boundaries.participant_visible[0].path"],
+        )
+
+    def test_participant_ancestor_of_restricted_is_flagged(self) -> None:
+        self.assertEqual(
+            len(
+                self._fields(
+                    {
+                        "participant_visible": [{"path": "docs", "export": "public"}],
+                        "oracle_only": [{"path": "docs/oracle.md", "export": "private"}],
+                    }
+                )
+            ),
+            1,
+        )
+
+    def test_participant_descendant_of_restricted_is_flagged(self) -> None:
+        self.assertEqual(
+            len(
+                self._fields(
+                    {
+                        "participant_visible": [{"path": "docs/guide.md", "export": "public"}],
+                        "operator_only": [{"path": "docs/", "export": "operator"}],
+                    }
+                )
+            ),
+            1,
+        )
+
+    def test_trailing_slash_is_path_equivalent(self) -> None:
+        self.assertEqual(
+            len(
+                self._fields(
+                    {
+                        "participant_visible": [{"path": "docs", "export": "public"}],
+                        "oracle_only": [{"path": "docs/", "export": "private"}],
+                    }
+                )
+            ),
+            1,
+        )
+
+    def test_backslash_is_treated_as_a_path_separator(self) -> None:
+        # A Windows-style separator must not smuggle a restricted descendant
+        # past the guard: docs\\secret.yaml is under the participant root docs,
+        # and Windows filesystem APIs would stage it into the participant tree.
+        self.assertEqual(
+            len(
+                self._fields(
+                    {
+                        "participant_visible": [{"path": "docs", "export": "public"}],
+                        "oracle_only": [{"path": "docs\\secret.yaml", "export": "private"}],
+                    }
+                )
+            ),
+            1,
+        )
+        # Same when the backslash is on the participant declaration.
+        self.assertEqual(
+            self._fields(
+                {
+                    "participant_visible": [{"path": "docs\\guide.md", "export": "public"}],
+                    "operator_only": [{"path": "docs", "export": "operator"}],
+                }
+            ),
+            ["artifact_boundaries.participant_visible[0].path"],
+        )
+
+    def test_sibling_prefix_is_not_a_false_positive(self) -> None:
+        self.assertEqual(
+            self._fields(
+                {
+                    "participant_visible": [{"path": "docs", "export": "public"}],
+                    "oracle_only": [{"path": "docs2", "export": "private"}],
+                }
+            ),
+            [],
+        )
+
+    def test_operator_only_group_is_restricted_regardless_of_export(self) -> None:
+        self.assertEqual(
+            len(
+                self._fields(
+                    {
+                        "participant_visible": [{"path": "shared/brief.md", "export": "public"}],
+                        "operator_only": [{"path": "shared/brief.md", "export": "commercial"}],
+                    }
+                )
+            ),
+            1,
+        )
+
+    def test_restricted_export_in_any_group_is_restricted(self) -> None:
+        self.assertEqual(
+            len(
+                self._fields(
+                    {
+                        "participant_visible": [{"path": "notes.md", "export": "public"}],
+                        "commercial": [{"path": "notes.md", "export": "operator"}],
+                    }
+                )
+            ),
+            1,
+        )
+
+    def test_disjoint_boundaries_are_clean(self) -> None:
+        self.assertEqual(
+            self._fields(
+                {
+                    "participant_visible": [{"path": "public/brief.md", "export": "public"}],
+                    "operator_only": [{"path": "operator/runbook.md", "export": "operator"}],
+                    "oracle_only": [{"path": "restricted/answers.yaml", "export": "private"}],
+                    "commercial": [{"path": "profiles/", "export": "commercial"}],
+                }
+            ),
+            [],
+        )
+
+    def test_restricted_versus_restricted_is_out_of_scope(self) -> None:
+        # participant-vs-restricted only; operator/commercial-vs-oracle is not
+        # broadened into universal cross-tier disjointness (ADR 0013).
+        self.assertEqual(
+            self._fields(
+                {
+                    "participant_visible": [{"path": "public/brief.md", "export": "public"}],
+                    "commercial": [{"path": "docs/", "export": "commercial"}],
+                    "oracle_only": [{"path": "docs/answers.yaml", "export": "private"}],
+                }
+            ),
+            [],
+        )
+
+    def test_malformed_rows_do_not_raise(self) -> None:
+        self.assertEqual(
+            self._fields(
+                {
+                    "participant_visible": [
+                        "not-a-dict",
+                        {"path": 123},
+                        {"no_path": True},
+                        {"path": "docs/x.md", "export": "public"},
+                    ],
+                    "oracle_only": [{"path": "docs/x.md", "export": "private"}, {"bad": 1}],
+                }
+            ),
+            ["artifact_boundaries.participant_visible[3].path"],
+        )
+
+    def test_non_dict_boundaries_return_empty(self) -> None:
+        self.assertEqual(self._fields(None), [])
+        self.assertEqual(self._fields([]), [])
+        self.assertEqual(self._fields({}), [])
 
 
 class SdlValidationTests(PackValidationFixture):

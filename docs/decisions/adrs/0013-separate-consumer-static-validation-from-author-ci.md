@@ -85,9 +85,22 @@ The consumer result covers exactly the static ingest contract:
   all-true content-safety attestations, required review gates, and matching pack
   name;
 - a referenced compatibility manifest, when present, against the packaged
-  compatibility schema; and
+  compatibility schema, including relational visibility-boundary invariants
+  that JSON Schema cannot express; and
 - every direct `sdl/*.sdl.yaml` document through ACES, with absence of a direct
   SDL document failing closed.
+
+Visibility-boundary overlap is one such shared static invariant. Every
+`participant_visible` path (normally exported as `public`) must be disjoint from
+every restricted non-participant path selected by `operator_only`, `oracle_only`,
+or an `operator`, `oracle`, or `private` export. Equality and containment in
+either ancestor/descendant direction are invalid. The release builder applies
+the same invariant before copying any boundary row; its participant-tier token
+scan remains an independent defense-in-depth control, not the primary declaration
+boundary. Diagnostics follow the existing surface: the consumer result exposes
+only a stable code and bounded field location, while author/release adapters may
+add bounded pack-relative context but never content, token values, or absolute
+paths.
 
 Author-CI-only checks do not silently migrate into this contract. Conversely,
 the CLI must not retain a second copy of any check in the shared subset.

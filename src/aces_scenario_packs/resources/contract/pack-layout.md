@@ -166,6 +166,15 @@ map them in `pack.compatibility.yaml` before content relies on them. Participant
 leak scan; operator/oracle/private roots may contain restricted action ordering,
 answers, credentials, raw evidence, and reset internals.
 
+Boundary declarations must prevent restricted content from entering a
+participant export structurally. Every `participant_visible` path (normally
+`export: public`) must be disjoint from every path selected by `operator_only`,
+`oracle_only`, or an `operator`, `oracle`, or `private` export. Equal paths and
+containment in either ancestor/descendant direction are invalid. Validation and
+release reject the declaration before staging; the participant leak scan is a
+separate defense-in-depth check for unsafe content inside an otherwise valid
+participant root.
+
 ### Provenance ledger (`docs/provenance-ledger.yaml`)
 
 **Required.** Every pack ships a machine-readable provenance ledger and
@@ -602,10 +611,11 @@ skips, never a silent partial release.
 - **Build (boundary split).** Each `artifact_boundaries` group is staged into its
   own release root — `participant/`, `operator/`, `oracle/`, `commercial/` — so
   participant-visible, operator-only, and oracle-only material are physically
-  separated. Every path is containment-checked (`..`, absolute, and
-  symlink-escape paths are rejected), and the operator-token leak scan is re-run
-  over the staged participant tier so no restricted operator vocabulary reaches a participant
-  artifact.
+  separated. Participant and restricted non-participant roots must pass the
+  disjointness rule above before any copy starts. Every path is
+  containment-checked (`..`, absolute, and symlink-escape paths are rejected),
+  and the operator-token leak scan is re-run over the staged participant tier so
+  no restricted operator vocabulary reaches a participant artifact.
 - **Profile smoke.** Delivery-bundle selection must change participant exposure:
   each supported bundle's participant view (`_shared/` includes + its
   `participant/` entrypoints) is assembled and the views are proven non-identical

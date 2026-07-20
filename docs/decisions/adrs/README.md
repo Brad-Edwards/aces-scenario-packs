@@ -22,3 +22,4 @@ once accepted; a later ADR supersedes an earlier one rather than editing it.
 | [0014](0014-consume-aces-concept-authority.md) | Keep governed concept references in ACES concept-authority | Accepted |
 | [0015](0015-attest-python-distribution-build-provenance.md) | Attest Python distribution build provenance | Accepted |
 | [0016](0016-automate-dependency-updates.md) | Automate dependency updates and ship ACES bumps as releases | Accepted |
+| [0017](0017-sign-release-tags-with-keyless-sigstore.md) | Sign release tags with keyless Sigstore | Accepted |

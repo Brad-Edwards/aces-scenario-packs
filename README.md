@@ -1,5 +1,7 @@
 # ACES Scenario Packs
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Brad-Edwards/aces-scenario-packs/badge)](https://scorecard.dev/viewer/?uri=github.com/Brad-Edwards/aces-scenario-packs)
+
 The canonical, shared home for the **ACES scenario-pack definition** and the
 **authoring / validation tooling** that goes with it, published as an installable
 Python package so catalogs (and others) consume one version-matched artifact
